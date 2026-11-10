@@ -1,0 +1,35 @@
+# ROS 2 build artifacts
+build/
+install/
+log/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+env/
+venv/
+ENV/
+
+# Gazebo cache & logs
+*.log
+*.orig
+*.swp
+*~
+.gazebo/
+.ignition/
+
+# IDE & Editor settings
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Large model binaries / temporary files
+*.tar
+*.tar.gz
+*.zip
+*.msi
+*.vhdx

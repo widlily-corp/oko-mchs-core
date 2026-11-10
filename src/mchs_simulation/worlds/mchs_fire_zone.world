@@ -1,0 +1,179 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="mchs_world">
+    <!-- Освещение сцены (Солнце) -->
+    <include>
+      <uri>model://sun</uri>
+    </include>
+
+    <!-- Поверхность земли -->
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+
+    <!-- Окружение: Очаг лесного пожара (Зона ЧС) -->
+    <model name="fire_emergency_spot">
+      <static>true</static>
+      <pose>8.0 0.0 0.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <cylinder>
+              <radius>1.8</radius>
+              <length>0.5</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="visual_core">
+          <geometry>
+            <cylinder>
+              <radius>1.8</radius>
+              <length>0.5</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>1.0 0.2 0.0 1.0</ambient>
+            <diffuse>1.0 0.4 0.0 1.0</diffuse>
+            <emissive>1.0 0.3 0.0 1.0</emissive>
+          </material>
+        </visual>
+        <!-- Пламя / Ядро возгорания -->
+        <visual name="visual_flame">
+          <pose>0 0 0.8 0 0 0</pose>
+          <geometry>
+            <cone>
+              <radius>1.2</radius>
+              <length>1.6</length>
+            </cone>
+          </geometry>
+          <material>
+            <ambient>1.0 0.6 0.0 1.0</ambient>
+            <diffuse>1.0 0.7 0.0 1.0</diffuse>
+            <emissive>1.0 0.8 0.0 1.0</emissive>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Деревья / Ориентиры зоны поиска -->
+    <model name="forest_tree_1">
+      <static>true</static>
+      <pose>6.0 3.0 1.5 0 0 0</pose>
+      <link name="link">
+        <visual name="trunk">
+          <geometry><cylinder><radius>0.2</radius><length>3.0</length></cylinder></geometry>
+          <material><ambient>0.4 0.2 0.1 1</ambient><diffuse>0.4 0.2 0.1 1</diffuse></material>
+        </visual>
+        <visual name="leaves">
+          <pose>0 0 1.5 0 0 0</pose>
+          <geometry><sphere><radius>1.2</radius></sphere></geometry>
+          <material><ambient>0.1 0.5 0.1 1</ambient><diffuse>0.1 0.6 0.1 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="forest_tree_2">
+      <static>true</static>
+      <pose>9.0 -3.5 1.5 0 0 0</pose>
+      <link name="link">
+        <visual name="trunk">
+          <geometry><cylinder><radius>0.2</radius><length>3.0</length></cylinder></geometry>
+          <material><ambient>0.4 0.2 0.1 1</ambient><diffuse>0.4 0.2 0.1 1</diffuse></material>
+        </visual>
+        <visual name="leaves">
+          <pose>0 0 1.5 0 0 0</pose>
+          <geometry><sphere><radius>1.4</radius></sphere></geometry>
+          <material><ambient>0.1 0.5 0.1 1</ambient><diffuse>0.1 0.6 0.1 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- БПЛА МЧС (Квадрокоптер с бортовой камерой и ROS 2 плагинами) -->
+    <model name="mchs_quadcopter">
+      <pose>0 0 0.2 0 0 0</pose>
+      <link name="base_link">
+        <inertial>
+          <mass>1.5</mass>
+          <inertia>
+            <ixx>0.034</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>0.034</iyy><iyz>0</iyz><izz>0.06</izz>
+          </inertia>
+        </inertial>
+
+        <!-- Корпус квадрокоптера -->
+        <visual name="body_visual">
+          <geometry><box><size>0.4 0.4 0.1</size></box></geometry>
+          <material>
+            <ambient>0.9 0.3 0.1 1</ambient>
+            <diffuse>1.0 0.4 0.1 1</diffuse>
+          </material>
+        </visual>
+        <collision name="body_collision">
+          <geometry><box><size>0.4 0.4 0.1</size></box></geometry>
+        </collision>
+
+        <!-- Лучи и пропеллеры -->
+        <visual name="arm_1">
+          <pose>0.25 0.25 0.05 0 0 0.785</pose>
+          <geometry><cylinder><radius>0.02</radius><length>0.3</length></cylinder></geometry>
+          <material><ambient>0.2 0.2 0.2 1</ambient></material>
+        </visual>
+        <visual name="arm_2">
+          <pose>-0.25 -0.25 0.05 0 0 0.785</pose>
+          <geometry><cylinder><radius>0.02</radius><length>0.3</length></cylinder></geometry>
+          <material><ambient>0.2 0.2 0.2 1</ambient></material>
+        </visual>
+        <visual name="arm_3">
+          <pose>-0.25 0.25 0.05 0 0 -0.785</pose>
+          <geometry><cylinder><radius>0.02</radius><length>0.3</length></cylinder></geometry>
+          <material><ambient>0.2 0.2 0.2 1</ambient></material>
+        </visual>
+        <visual name="arm_4">
+          <pose>0.25 -0.25 0.05 0 0 -0.785</pose>
+          <geometry><cylinder><radius>0.02</radius><length>0.3</length></cylinder></geometry>
+          <material><ambient>0.2 0.2 0.2 1</ambient></material>
+        </visual>
+
+        <!-- Сенсор: Оптико-электронная камера БПЛА с наклоном вниз (35 град) -->
+        <sensor type="camera" name="mchs_camera">
+          <pose>0.15 0.0 -0.05 0 0.6 0</pose>
+          <update_rate>30.0</update_rate>
+          <camera name="head">
+            <horizontal_fov>1.3962634</horizontal_fov>
+            <image>
+              <width>640</width>
+              <height>480</height>
+              <format>R8G8B8</format>
+            </image>
+            <clip>
+              <near>0.1</near>
+              <far>300</far>
+            </clip>
+          </camera>
+          <!-- ROS 2 плагин трансляции видео в топик -->
+          <plugin name="camera_controller" filename="libgazebo_ros_camera.so">
+            <ros>
+              <namespace>/mchs</namespace>
+              <remapping>image_raw:=camera/image_raw</remapping>
+              <remapping>camera_info:=camera/camera_info</remapping>
+            </ros>
+            <camera_name>camera</camera_name>
+            <frame_name>camera_optical_link</frame_name>
+          </plugin>
+        </sensor>
+      </link>
+
+      <!-- ROS 2 плагин автономного перемещения дрона в 3D пространстве -->
+      <plugin name="drone_controller" filename="libgazebo_ros_planar_move.so">
+        <ros>
+          <namespace>/mchs</namespace>
+          <remapping>cmd_vel:=cmd_vel</remapping>
+          <remapping>odom:=odom</remapping>
+        </ros>
+        <update_rate>50</update_rate>
+        <publish_rate>20</publish_rate>
+      </plugin>
+    </model>
+
+  </world>
+</sdf>
