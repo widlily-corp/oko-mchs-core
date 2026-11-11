@@ -1,0 +1,44 @@
+# Параметры ROS 2-ноды «Око МЧС: зрение».
+#
+# Запуск:
+#   python3 src/mchs_vision/scripts/mchs_vision_node.py \
+#     --ros-args --params-file src/mchs_vision/config/vision_params.yaml
+#
+# camera_pitch_down_deg:
+#   34.4 — текущая камера в mchs_fire_zone.world (наклон вниз);
+#   90.0 — строго надирная камера (формула из ТЗ).
+mchs_vision_node:
+  ros__parameters:
+    image_topic: "/mchs/camera/image_raw"
+    odom_topic: "/mchs/odom"
+    event_topic: "/mchs/detection_event"
+    annotated_topic: "/mchs/camera/annotated"
+
+    camera_hfov_deg: 80.0
+    camera_pitch_down_deg: 34.4
+    image_width: 640
+    image_height: 480
+    max_range_m: 300.0
+
+    # Если Gazebo не публикует высоту (planar_move держит z≈0.2),
+    # используем эту высоту в метрах.
+    fallback_altitude_m: 8.0
+    min_valid_altitude_m: 1.0
+
+    # Точка привязки локальной СК к WGS-84.
+    origin_lat: 53.4129
+    origin_lon: 58.9814
+
+    # Сколько кадров подряд нужно, чтобы подтвердить очаг.
+    track_min_hits: 2
+
+    # Защита ROS-топика от флуда.
+    event_cooldown_s: 3.0
+    event_min_interval_s: 1.0
+
+    process_every_n: 1
+    show_window: false
+    publish_annotated: true
+
+    enabled_classes: "FIRE,SMOKE,OIL_SPILL,FLOOD"
+    hud_title: "MCHS OPTICAL RECON // GAZEBO 11"
