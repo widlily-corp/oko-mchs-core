@@ -115,6 +115,12 @@ class DetectorConfig:
     merge_gap_px: int = 12              # склейка близких пятен одного класса
     max_detections_per_class: int = 3
 
+    # Пороги min_area_px заданы для кадра 640×480. На 1280×720 они
+    # автоматически умножаются на 4, иначе чувствительность выросла бы
+    # вчетверо и в кадр полезли бы мелкие блики.
+    reference_frame_pixels: int = 640 * 480
+    scale_min_area_with_resolution: bool = True
+
     # Текстурный фильтр.
     texture_blur_ksize: int = 5
 
@@ -138,20 +144,20 @@ class CameraConfig:
 
     pitch_down_deg — угол наклона оптической оси вниз:
         0°   — камера смотрит в горизонт (курсовая);
-        34.4°— текущая камера в мире Gazebo mchs_fire_zone.world;
-        90°  — строго надирная камера (как в формуле из ТЗ Ромы).
+        45°  — текущая камера в mchs_drone/model.sdf;
+        90°  — строго надирная камера.
 
     Пиксели считаются квадратными, поэтому fy = fx.
     """
 
-    width: int = 640
-    height: int = 480
+    width: int = 1280
+    height: int = 720
     hfov_deg: float = 80.0
-    pitch_down_deg: float = 34.4
+    pitch_down_deg: float = 45.0
 
     # Смещение камеры относительно центра масс дрона (метры, СК дрона FLU:
-    # X — вперёд, Y — влево, Z — вверх).
-    mount_forward_m: float = 0.15
+    # X — вперёд, Y — влево, Z — вверх). Соответствует mchs_drone/model.sdf.
+    mount_forward_m: float = 0.12
     mount_right_m: float = 0.0
     mount_up_m: float = -0.05
 

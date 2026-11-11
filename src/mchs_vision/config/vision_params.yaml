@@ -4,9 +4,8 @@
 #   python3 src/mchs_vision/scripts/mchs_vision_node.py \
 #     --ros-args --params-file src/mchs_vision/config/vision_params.yaml
 #
-# camera_pitch_down_deg:
-#   34.4 — текущая камера в mchs_fire_zone.world (наклон вниз);
-#   90.0 — строго надирная камера (формула из ТЗ).
+# Камера соответствует src/mchs_simulation/models/mchs_drone/model.sdf:
+#   1280×720, HFOV 80°, наклон вниз 45° (pitch = 0.785398 рад).
 mchs_vision_node:
   ros__parameters:
     image_topic: "/mchs/camera/image_raw"
@@ -15,12 +14,14 @@ mchs_vision_node:
     annotated_topic: "/mchs/camera/annotated"
 
     camera_hfov_deg: 80.0
-    camera_pitch_down_deg: 34.4
-    image_width: 640
-    image_height: 480
+    camera_pitch_down_deg: 45.0
+    image_width: 1280
+    image_height: 720
+    camera_mount_forward_m: 0.12
+    camera_mount_up_m: -0.05
     max_range_m: 300.0
 
-    # Если Gazebo не публикует высоту (planar_move держит z≈0.2),
+    # Если Gazebo не публикует высоту (planar_move держит z≈0.15),
     # используем эту высоту в метрах.
     fallback_altitude_m: 8.0
     min_valid_altitude_m: 1.0
@@ -39,6 +40,11 @@ mchs_vision_node:
     process_every_n: 1
     show_window: false
     publish_annotated: true
+
+    # HTTP-поток для АРМ оператора (src/mchs_ui/app.py опрашивает /snapshot.jpg).
+    enable_stream: true
+    stream_port: 8080
+    stream_quality: 80
 
     enabled_classes: "FIRE,SMOKE,OIL_SPILL,FLOOD"
     hud_title: "MCHS OPTICAL RECON // GAZEBO 11"
