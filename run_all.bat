@@ -13,7 +13,7 @@ echo [3/4] Waiting 5 seconds for nodes initialization...
 timeout /t 5 /nobreak >nul
 
 echo [4/4] Starting Operator Station on Windows...
-start "OKO MCHS - OPERATOR UI" python "%~dp0src\mchs_ui\app.py"
+start "OKO MCHS - OPERATOR UI" python "\\wsl.localhost\Ubuntu-22.04\root\oko-mchs-core\src\mchs_ui\app.py"
 
 echo ========================================================
 echo ALL SYSTEMS ACTIVE!

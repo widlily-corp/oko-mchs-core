@@ -13,7 +13,7 @@ Write-Host "3. Ожидание старта узлов (5 сек)..." -Foregrou
 Start-Sleep -Seconds 5
 
 Write-Host "4. Запуск АРМ Оператора ЦУКС на Windows..." -ForegroundColor Yellow
-Start-Process python -ArgumentList "`"$PSScriptRoot\src\mchs_ui\app.py`""
+Start-Process python -ArgumentList '\\wsl.localhost\Ubuntu-22.04\root\oko-mchs-core\src\mchs_ui\app.py'
 
 Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host ">>> ВСЕ СИСТЕМЫ АКТИВНЫ!" -ForegroundColor Green
