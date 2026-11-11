@@ -55,6 +55,9 @@ class VisionPipeline:
         self.registry = IncidentRegistry()
         self.events = EventFactory()
         self.throttle = throttle or EventThrottle()
+        self._min_area_m2 = {
+            spec.name: spec.min_area_m2 for spec in self.config.classes
+        }
 
         self._smooth: Dict[str, _SmoothState] = {}
         self._fps = 0.0
@@ -76,17 +79,26 @@ class VisionPipeline:
         records = sort_records(records)
 
         events: List[dict] = []
+        by_incident: Dict[str, List[HazardRecord]] = {}
         for record in records:
             incident_id = self.registry.incident_for(
                 record.hazard_type, record.abs_xy, now
             )
-            event = self.events.build(record, records, pose, incident_id, now)
+            by_incident.setdefault(incident_id, []).append(record)
+
+        for incident_id, group in by_incident.items():
+            # records уже отсортированы: первый — самый опасный в инциденте.
+            primary = group[0]
+            if not self.throttle.should_emit(
+                    incident_id, primary.smoothed_area_m2,
+                    primary.threat_level, now):
+                continue
+            event = self.events.build(primary, records, pose, incident_id, now)
             event["frame"] = {
                 "width": int(frame_bgr.shape[1]),
                 "height": int(frame_bgr.shape[0]),
             }
-            if self.throttle.allow(event, now):
-                events.append(event)
+            events.append(event)
 
         self.registry.prune(now)
         self._prune_smooth()
@@ -114,6 +126,9 @@ class VisionPipeline:
                      now: datetime) -> Optional[HazardRecord]:
         metrics = self.projector.region_metrics(detection.contour, pose)
         if metrics is None:
+            return None
+        if metrics.area_m2 < self._min_area_m2.get(detection.hazard_type, 0.0):
+            # Мелкие блики, окна и фрагменты построек не публикуем как ЧС.
             return None
 
         key = detection.track_id or f"{detection.hazard_type}-{id(detection)}"

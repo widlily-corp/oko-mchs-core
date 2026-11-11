@@ -26,12 +26,39 @@ class HazardClassSpec:
         color_bgr: цвет рамки/HUD в палитре OpenCV (BGR).
         hsv_ranges: список диапазонов HSV. Пиксель попадает в маску класса,
             если он попал хотя бы в один диапазон.
-        min_area_px: минимальная площадь контура в пикселях. Отсекает шум.
+        min_area_px: минимальная площадь пятна класса в пикселях (число
+            пикселей маски, а не площадь внешнего контура). Отсекает шум.
         open_kernel: размер ядра MORPH_OPEN (убирает одиночные пиксели).
         close_kernel: размер ядра MORPH_CLOSE (склеивает разрывы пятна).
         max_texture_std: максимальное СКО лапласиана внутри контура.
             Для гладких пятен (нефть, вода, дым) помогает отсечь текстуру
             травы/листвы, которая лишь кажется тёмной или серой.
+        max_fill_ratio: максимальная доля пикселей класса в bbox. Плоские
+            прямоугольные крыши и разметка дают почти 1.0; пламя и дым —
+            неровные пятна заметно меньше.
+        min_solidity_ratio: доля пикселей класса внутри внешнего контура.
+            Кольца и полые объекты (например, оранжевая разметка вертодрома)
+            дают < 0.5 и отбрасываются, хотя внешний контур выглядит
+            сплошным диском.
+        min_hull_ratio: площадь контура / площадь выпуклой оболочки. Тонкие
+            серповидные и кольцевые структуры имеют низкое значение.
+        max_rectangularity: площадь контура / площадь минимального
+            повёрнутого прямоугольника. Почти 1.0 — это искусственная
+            прямоугольная крыша/плита, а не очаг ЧС.
+        min_hue_std: минимальное СКО оттенка внутри маски. Однотонная
+            оранжевая поверхность (разметка, крыша, конус) имеет СКО < 1,
+            а пламя всегда содержит несколько оттенков.
+        min_mean_saturation: минимальная средняя насыщенность. Нейтральные
+            серые тени зданий (S < 20) не являются нефтяным пятном, у нефти
+            обычно есть цветной оттенок или радужная плёнка.
+        max_mean_value: максимальная средняя яркость. Бурые лужи и мокрый
+            грунт светлее тёмного нефтяного пятна и отсекаются по V.
+        max_border_touches: сколько краёв кадра может касаться контур.
+            Для наземных классов 0: срезанный объект даёт неверную площадь.
+            Для воды допускается 2, потому что разлив может уходить за кадр,
+            но кадр, полностью залитый синим (небо/фон), — не затопление.
+        min_area_m2: минимальная площадь очага в метрах для публикации.
+            Мелкие блики и фрагменты построек не должны создавать инцидент.
         description: пояснение для документации.
     """
 
@@ -43,6 +70,15 @@ class HazardClassSpec:
     open_kernel: int = 3
     close_kernel: int = 9
     max_texture_std: float = 999.0
+    max_fill_ratio: float = 0.98
+    min_solidity_ratio: float = 0.55
+    min_hull_ratio: float = 0.35
+    max_rectangularity: float = 0.97
+    min_hue_std: float = 0.0
+    min_mean_saturation: float = 0.0
+    max_mean_value: float = 255.0
+    max_border_touches: int = 0
+    min_area_m2: float = 0.0
     description: str = ""
 
 
@@ -57,6 +93,12 @@ FIRE = HazardClassSpec(
     open_kernel=3,
     close_kernel=9,
     max_texture_std=999.0,
+    max_fill_ratio=0.92,
+    min_solidity_ratio=0.55,
+    min_hull_ratio=0.40,
+    max_rectangularity=0.93,
+    min_hue_std=1.2,
+    min_area_m2=2.0,
     description="Яркие жёлто-оранжевые тона пламени с высокой насыщенностью.",
 )
 
@@ -69,6 +111,11 @@ SMOKE = HazardClassSpec(
     open_kernel=7,
     close_kernel=15,
     max_texture_std=26.0,
+    max_fill_ratio=0.90,
+    min_solidity_ratio=0.55,
+    min_hull_ratio=0.40,
+    max_rectangularity=0.90,
+    min_area_m2=25.0,
     description="Светло-серые рассеянные тона с низкой насыщенностью.",
 )
 
@@ -76,11 +123,18 @@ OIL_SPILL = HazardClassSpec(
     name="OIL_SPILL",
     label_ru="Разлив нефтепродуктов",
     color_bgr=(180, 60, 200),  # фиолетовый, хорошо виден на зелёном
-    hsv_ranges=(((0, 0, 15), (180, 75, 65)),),
+    hsv_ranges=(((0, 0, 15), (180, 75, 60)),),
     min_area_px=400,
     open_kernel=5,
     close_kernel=11,
     max_texture_std=17.0,
+    max_fill_ratio=0.90,
+    min_solidity_ratio=0.55,
+    min_hull_ratio=0.35,
+    max_rectangularity=0.92,
+    min_mean_saturation=25.0,
+    max_mean_value=48.0,
+    min_area_m2=5.0,
     description="Тёмные малосатурационные пятна на почве/траве.",
 )
 
@@ -88,11 +142,17 @@ FLOOD = HazardClassSpec(
     name="FLOOD",
     label_ru="Затопление",
     color_bgr=(255, 170, 0),  # сине-голубой
-    hsv_ranges=(((95, 80, 60), (125, 255, 200)),),
+    hsv_ranges=(((95, 80, 190), (125, 255, 255)),),
     min_area_px=600,
     open_kernel=7,
     close_kernel=15,
     max_texture_std=22.0,
+    max_fill_ratio=0.88,
+    min_solidity_ratio=0.55,
+    min_hull_ratio=0.35,
+    max_rectangularity=0.86,
+    max_border_touches=2,
+    min_area_m2=30.0,
     description="Сине-голубая водная поверхность с высокой насыщенностью.",
 )
 
@@ -108,16 +168,16 @@ class DetectorConfig:
     enabled: Tuple[str, ...] = DEFAULT_ENABLED
 
     # Геометрические фильтры контуров.
-    max_area_ratio: float = 0.55        # контур не может занимать >55% кадра
-    min_fill_ratio: float = 0.10        # площадь контура / площадь bbox
+    max_area_ratio: float = 0.50        # >50% кадра — это фон/небо, не очаг
+    min_fill_ratio: float = 0.18        # пиксели класса / площадь bbox
     max_aspect_ratio: float = 10.0      # отсекаем длинные тонкие линии (дороги)
-    border_touch_limit: int = 2         # контур, касающийся 3+ краёв, — фон
+    border_touch_limit: int = 0         # объект, срезанный краем кадра, не считаем
     merge_gap_px: int = 12              # склейка близких пятен одного класса
     max_detections_per_class: int = 3
 
-    # Пороги min_area_px заданы для кадра 640×480. На 1280×720 они
-    # автоматически умножаются на 4, иначе чувствительность выросла бы
-    # вчетверо и в кадр полезли бы мелкие блики.
+    # Пороги min_area_px заданы для кадра 640×480. На 1280×720 площадь
+    # кадра в 3 раза больше, поэтому порог умножается на 3 — иначе
+    # чувствительность выросла бы и в кадр полезли бы мелкие блики.
     reference_frame_pixels: int = 640 * 480
     scale_min_area_with_resolution: bool = True
 
@@ -144,7 +204,7 @@ class CameraConfig:
 
     pitch_down_deg — угол наклона оптической оси вниз:
         0°   — камера смотрит в горизонт (курсовая);
-        45°  — текущая камера в mchs_drone/model.sdf;
+        45°  — текущая камера в largedrone/model.sdf;
         90°  — строго надирная камера.
 
     Пиксели считаются квадратными, поэтому fy = fx.
@@ -156,10 +216,11 @@ class CameraConfig:
     pitch_down_deg: float = 45.0
 
     # Смещение камеры относительно центра масс дрона (метры, СК дрона FLU:
-    # X — вперёд, Y — влево, Z — вверх). Соответствует mchs_drone/model.sdf.
-    mount_forward_m: float = 0.12
+    # X — вперёд, Y — влево, Z — вверх). Соответствует
+    # src/mchs_simulation/models/largedrone/model.sdf: pose 0.42 0 0.12.
+    mount_forward_m: float = 0.42
     mount_right_m: float = 0.0
-    mount_up_m: float = -0.05
+    mount_up_m: float = 0.12
 
     min_range_m: float = 0.3
     max_range_m: float = 300.0

@@ -184,6 +184,49 @@ class HazardDetector:
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, _kernel(spec.close_kernel))
         return mask
 
+    @staticmethod
+    def _shape_features(contour: np.ndarray, pixel_count: int) -> Dict[str, float]:
+        """Геометрические признаки контура, устойчивые к полым объектам.
+
+        ``solidity`` считается по реальным пикселям маски, а не по площади
+        внешнего контура: у кольца (оранжевая разметка вертодрома) внешний
+        контур — сплошной диск, но внутри него пикселей класса нет.
+        """
+        contour_area = float(cv2.contourArea(contour))
+        if contour_area <= 0.0:
+            return {
+                "contour_area": 0.0,
+                "solidity": 0.0,
+                "hull_ratio": 0.0,
+                "rectangularity": 1.0,
+            }
+
+        hull = cv2.convexHull(contour)
+        hull_area = float(cv2.contourArea(hull)) if hull is not None else 0.0
+        rect = cv2.minAreaRect(contour)
+        rect_area = float(rect[1][0] * rect[1][1])
+        return {
+            "contour_area": contour_area,
+            "solidity": min(1.0, float(pixel_count) / contour_area),
+            "hull_ratio": contour_area / hull_area if hull_area > 0.0 else 0.0,
+            "rectangularity": contour_area / rect_area if rect_area > 0.0 else 1.0,
+        }
+
+    def _passes_class_filters(self, cand: Dict, spec: HazardClassSpec) -> bool:
+        """Единые цветовые/геометрические правила для класса."""
+        return (
+            cand["fill"] >= self.config.min_fill_ratio
+            and cand["fill"] <= spec.max_fill_ratio
+            and cand["solidity"] >= spec.min_solidity_ratio
+            and cand["hull_ratio"] >= spec.min_hull_ratio
+            and cand["rectangularity"] <= spec.max_rectangularity
+            and cand["texture"] <= spec.max_texture_std
+            and cand["hue_std"] >= spec.min_hue_std
+            and cand["mean_hsv"][1] >= spec.min_mean_saturation
+            and cand["mean_hsv"][2] <= spec.max_mean_value
+            and cand["purity"] >= 0.15
+        )
+
     def _detect_class(self, frame_bgr: np.ndarray, hsv: np.ndarray,
                       laplacian: np.ndarray, mask: np.ndarray,
                       claimed: np.ndarray, spec: HazardClassSpec,
@@ -198,40 +241,36 @@ class HazardDetector:
         candidates: List[Dict] = []
 
         for contour in contours:
-            area = float(cv2.contourArea(contour))
-            if area < min_area:
-                continue
-            if area > self.config.max_area_ratio * frame_area:
-                continue
-
             x, y, bw, bh = cv2.boundingRect(contour)
             if bw <= 0 or bh <= 0:
                 continue
             if max(bw, bh) / float(min(bw, bh)) > self.config.max_aspect_ratio:
                 continue
-
-            fill = area / float(bw * bh)
-            if fill < self.config.min_fill_ratio:
-                continue
             if self._border_touches((x, y, bw, bh), width, height) \
-                    > self.config.border_touch_limit:
+                    > self.config.border_touch_limit + spec.max_border_touches:
                 continue
 
             roi_mask = mask[y:y + bh, x:x + bw]
             pixel_count = int(cv2.countNonZero(roi_mask))
+            # Минимальная площадь и максимальная доля кадра считаются по
+            # реальным пикселям класса, а не по площади внешнего контура.
             if pixel_count < min_area:
                 continue
+            if pixel_count > self.config.max_area_ratio * frame_area:
+                continue
 
-            mean_hsv = cv2.mean(hsv[y:y + bh, x:x + bw], mask=roi_mask)[:3]
+            fill = pixel_count / float(bw * bh)
+            if fill < self.config.min_fill_ratio:
+                continue
+
+            shape = self._shape_features(contour, pixel_count)
+            hsv_roi = hsv[y:y + bh, x:x + bw]
+            hsv_pixels = hsv_roi[roi_mask > 0]
+            mean_hsv = cv2.mean(hsv_roi, mask=roi_mask)[:3]
+            hue_std = float(hsv_pixels[:, 0].std())
             lap_roi = laplacian[y:y + bh, x:x + bw]
             texture_std = float(lap_roi[roi_mask > 0].std())
-
-            if texture_std > spec.max_texture_std:
-                continue
-
             purity = self._color_purity(spec.name, mean_hsv)
-            if purity < 0.15:
-                continue
 
             moments = cv2.moments(contour)
             if abs(moments["m00"]) > 1e-9:
@@ -240,20 +279,28 @@ class HazardDetector:
             else:
                 cx, cy = x + bw / 2.0, y + bh / 2.0
 
-            candidates.append({
+            candidate = {
                 "contour": contour,
                 "bbox": (x, y, bw, bh),
-                "area": area,
+                "area": float(pixel_count),
                 "pixel_count": pixel_count,
                 "centroid": (float(cx), float(cy)),
                 "fill": fill,
                 "mean_hsv": (float(mean_hsv[0]), float(mean_hsv[1]),
                              float(mean_hsv[2])),
                 "texture": texture_std,
+                "hue_std": hue_std,
                 "purity": purity,
-            })
+                "solidity": shape["solidity"],
+                "hull_ratio": shape["hull_ratio"],
+                "rectangularity": shape["rectangularity"],
+                "contour_area": shape["contour_area"],
+            }
+            if self._passes_class_filters(candidate, spec):
+                candidates.append(candidate)
 
-        candidates = self._merge_candidates(candidates, hsv, laplacian, mask)
+        candidates = self._merge_candidates(candidates, hsv, laplacian, mask,
+                                            spec)
 
         # Сортируем по «весу» и оставляем не больше N пятен на класс.
         candidates.sort(key=lambda c: c["area"] * c["purity"], reverse=True)
@@ -264,7 +311,8 @@ class HazardDetector:
             area = float(cand["area"])
             fill = float(cand["fill"])
             purity = float(cand["purity"])
-            confidence = self._confidence(spec, area, fill, purity, stability=0.2)
+            confidence = self._confidence(spec, area, fill, purity,
+                                          stability=0.2, min_area_px=min_area)
             if confidence < self.config.min_confidence:
                 continue
 
@@ -289,7 +337,8 @@ class HazardDetector:
         return results
 
     def _merge_candidates(self, candidates: List[Dict], hsv: np.ndarray,
-                          laplacian: np.ndarray, mask: np.ndarray) -> List[Dict]:
+                          laplacian: np.ndarray, mask: np.ndarray,
+                          spec: HazardClassSpec) -> List[Dict]:
         """Склеить близкие пятна одного класса в один очаг."""
         if len(candidates) <= 1:
             return candidates
@@ -331,8 +380,11 @@ class HazardDetector:
 
             roi = union[y:y + bh, x:x + bw]
             pixel_count = int(cv2.countNonZero(roi))
-            mean_hsv = cv2.mean(hsv[y:y + bh, x:x + bw], mask=roi)[:3]
+            hsv_roi = hsv[y:y + bh, x:x + bw]
+            hsv_pixels = hsv_roi[roi > 0]
+            mean_hsv = cv2.mean(hsv_roi, mask=roi)[:3]
             texture = float(laplacian[y:y + bh, x:x + bw][roi > 0].std())
+            hue_std = float(hsv_pixels[:, 0].std()) if len(hsv_pixels) else 0.0
             moments = cv2.moments(contour)
             if abs(moments["m00"]) > 1e-9:
                 cx = moments["m10"] / moments["m00"]
@@ -344,18 +396,26 @@ class HazardDetector:
             # здесь сохраняем средневзвешенную чистоту группы.
             weights = [max(c["area"], 1.0) for c in group]
             purity = sum(c["purity"] * w for c, w in zip(group, weights)) / sum(weights)
-            merged.append({
+            shape = self._shape_features(contour, pixel_count)
+            candidate = {
                 "contour": contour,
                 "bbox": (x, y, bw, bh),
-                "area": float(cv2.contourArea(contour)),
+                "area": float(pixel_count),
                 "pixel_count": pixel_count,
                 "centroid": (float(cx), float(cy)),
-                "fill": float(cv2.contourArea(contour)) / float(bw * bh),
+                "fill": pixel_count / float(bw * bh),
                 "mean_hsv": (float(mean_hsv[0]), float(mean_hsv[1]),
                              float(mean_hsv[2])),
                 "texture": texture,
+                "hue_std": hue_std,
                 "purity": purity,
-            })
+                "solidity": shape["solidity"],
+                "hull_ratio": shape["hull_ratio"],
+                "rectangularity": shape["rectangularity"],
+                "contour_area": shape["contour_area"],
+            }
+            if self._passes_class_filters(candidate, spec):
+                merged.append(candidate)
         return merged
 
     @staticmethod
@@ -387,8 +447,10 @@ class HazardDetector:
         return 0.5
 
     def _confidence(self, spec: HazardClassSpec, area_px: float, fill: float,
-                    purity: float, stability: float) -> float:
-        size_score = _clamp01(area_px / (3.0 * spec.min_area_px))
+                    purity: float, stability: float,
+                    min_area_px: Optional[float] = None) -> float:
+        base_area = min_area_px if min_area_px else spec.min_area_px
+        size_score = _clamp01(area_px / (3.0 * base_area))
         fill_score = _clamp01(fill / 0.75)
         value = (
             0.30 * size_score

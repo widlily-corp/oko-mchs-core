@@ -31,7 +31,8 @@ else
 fi
 
 export PYTHONPATH="$VISION_DIR:${PYTHONPATH:-}"
-export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
+# Отдельный домен, чтобы тест не смешивался с запущенной демонстрацией.
+export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-44}"
 
 rm -rf "$TMP_DIR"
 mkdir -p "$TMP_DIR/dataset" "$TMP_DIR/offline"
@@ -54,6 +55,7 @@ echo "[4/4] ROS 2-интеграция (реальные топики)..."
 python3 "$VISION_DIR/scripts/mchs_vision_node.py" \
     --ros-args \
     -p show_window:=false \
+    -p enable_stream:=false \
     -p camera_pitch_down_deg:=90.0 \
     -p track_min_hits:=2 \
     -p event_cooldown_s:=1.0 \
