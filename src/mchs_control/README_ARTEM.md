@@ -66,3 +66,64 @@ python3 src/mchs_control/scripts/mchs_pilot_node.py
 ```bash
 python3 src/mchs_control/scripts/generate_report.py
 ```
+
+---
+
+## 4. Статус реализации (ветка `feature/pilot-artem`)
+
+Автопилот и протокол реализованы по ТЗ выше.
+
+### Что сделано
+- FSM `TAKEOFF -> PATROL_GRID -> HOVER_INSPECTION -> RTL -> LAND -> FINISHED` в `mchs_pilot_node.py`.
+- Подписка на `/mchs/detection_event`: `WARNING` — зависание 5 с, `CRITICAL` — 10 с, `ADVISORY` игнорируется.
+- RTL по вектору на базу `(0, 0, 8)`; посадка до `Z <= 0,2 м` и остановка моторов.
+- Защита от повторных событий (одна инспекция на очаг, радиус 15 м) и возврат на базу при АКБ < 20 %.
+- Протокол `incident_protocol.json` + печатный бланк `incident_protocol.txt` в папке `reports/`.
+- Техническая записка: `docs/technical_note.md`.
+- Автотесты: `src/mchs_control/test/test_flight_planner.py`.
+
+### Как проверить
+```bash
+# 1) прогон всего FSM без ROS и Gazebo (виртуальное время)
+python3 src/mchs_control/scripts/mchs_pilot_node.py --dry-run --detect-at 8
+
+# 2) другой тип ЧС и крупный очаг
+python3 src/mchs_control/scripts/mchs_pilot_node.py --dry-run --hazard FLOOD --area 120
+
+# 3) только протокол (JSON + печатный бланк)
+python3 src/mchs_control/scripts/generate_report.py --hazard OIL_SPILL --area 60
+
+# 4) автотесты
+python3 src/mchs_control/test/test_flight_planner.py
+
+# 5) реальный запуск в ROS 2
+source /opt/ros/humble/setup.bash
+python3 src/mchs_control/scripts/mchs_pilot_node.py
+```
+
+### Ручная имитация тревоги
+
+Пока нода зрения не публикует события, инспекцию можно вызвать вручную:
+
+```bash
+ros2 topic pub --once /mchs/detection_event std_msgs/msg/String \
+  "{data: '{\"hazard_type\": \"FIRE\", \"threat_level\": \"CRITICAL\", \"area_sq_m\": 48.5, \"target_geo\": {\"rel_x\": 12.4, \"rel_y\": -3.8}, \"confidence\": 0.94}'}"
+```
+
+### Параметры ROS 2
+
+| Параметр | По умолчанию | Смысл |
+|---|---|---|
+| `takeoff_altitude` | 8,0 м | рабочая высота патруля |
+| `cruise_speed` | 2,0 м/с | скорость на галсе |
+| `lanes` | 2 | число галсов «змейки» |
+| `hover_warning_s` | 5,0 с | зависание при уровне `WARNING` |
+| `hover_critical_s` | 10,0 с | зависание при уровне `CRITICAL` |
+| `control_rate_hz` | 10,0 Гц | частота такта управления |
+| `report_dir` | `reports/` | папка для протоколов |
+
+Переопределение без правки кода:
+
+```bash
+python3 src/mchs_control/scripts/mchs_pilot_node.py --ros-args -p cruise_speed:=2.5 -p lanes:=3
+```
