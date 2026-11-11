@@ -567,4 +567,53 @@ class HazardDetector:
             if track.missed <= self.config.track_max_missed
         }
 
-        return [det for det in detections if det.confirmed]
+        # Дубли одного объекта (жилет + каска + полоса) склеиваем в один трек.
+        merged_ids = self._merge_duplicate_tracks()
+        if merged_ids:
+            for detection in detections:
+                detection.track_id = merged_ids.get(
+                    detection.track_id, detection.track_id
+                )
+
+        unique: List[Detection] = []
+        seen_tracks = set()
+        for detection in detections:
+            if detection.track_id in seen_tracks:
+                continue
+            seen_tracks.add(detection.track_id)
+            unique.append(detection)
+        return [det for det in unique if det.confirmed]
+
+    def _merge_duplicate_tracks(self) -> Dict[str, str]:
+        """Склеить близкие треки одного класса, возникшие из частей объекта."""
+        tracks = sorted(
+            self._tracks.values(),
+            key=lambda track: (track.hits, -track.missed),
+            reverse=True,
+        )
+        survivors: List[_Track] = []
+        mapping: Dict[str, str] = {}
+        for track in tracks:
+            target = None
+            for candidate in survivors:
+                if candidate.hazard_type != track.hazard_type:
+                    continue
+                distance = math.hypot(
+                    candidate.centroid_px[0] - track.centroid_px[0],
+                    candidate.centroid_px[1] - track.centroid_px[1],
+                )
+                if distance <= self.config.track_merge_distance_px:
+                    target = candidate
+                    break
+            if target is None:
+                survivors.append(track)
+            else:
+                target.hits = max(target.hits, track.hits)
+                target.missed = min(target.missed, track.missed)
+                target.area_px = max(target.area_px, track.area_px)
+                mapping[track.track_id] = target.track_id
+        if mapping:
+            self._tracks = {
+                track.track_id: track for track in survivors
+            }
+        return mapping

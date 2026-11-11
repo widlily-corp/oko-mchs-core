@@ -222,6 +222,7 @@ class DetectorConfig:
     track_max_missed: int = 5           # сколько кадров трек живёт без детекции
     track_match_iou: float = 0.25
     track_match_distance_px: float = 45.0
+    track_merge_distance_px: float = 28.0  # склейка дублей одного объекта
     smoothing_alpha: float = 0.45       # EMA для координат/площади
 
     # Дополнительный признак пострадавшего: светоотражающая полоса
