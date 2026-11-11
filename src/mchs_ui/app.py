@@ -1174,9 +1174,13 @@ class OkoMchsApp(ctk.CTk):
 
         self.lbl_incident_response = ctk.CTkLabel(
             card, text="", font=ctk.CTkFont(FONT_UI, 11), text_color=COLORS["warn"],
-            anchor="w", justify="left", wraplength=420,
+            anchor="w", justify="left", wraplength=320,
         )
         self.lbl_incident_response.pack(fill="x", padx=14, pady=(0, 6))
+        # Ширина карточки меняется вместе с окном: перенос строк обязан
+        # следовать за ней, иначе рекомендация по наряду обрезается по краю.
+        card.bind("<Configure>", lambda event: self.lbl_incident_response.configure(
+            wraplength=max(180, event.width - 44)))
 
         buttons = ctk.CTkFrame(card, fg_color="transparent")
         buttons.pack(fill="x", padx=14, pady=(0, 12), side="bottom")
