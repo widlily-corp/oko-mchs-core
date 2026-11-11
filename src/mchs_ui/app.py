@@ -2241,11 +2241,14 @@ class OkoMchsApp(ctk.CTk):
             canvas.create_text(px, py + radius + 10, text=hazard["short"], fill=hazard["color"],
                                font=(FONT_UI, 8, "bold"))
 
-        # Отметка очага из протокола
+        # Отметка очага из протокола (держим внутри полотна, чтобы не обрезалась)
         if self.protocol and self.protocol.get("x") is not None and self.protocol.get("y") is not None:
             px, py = self._world_to_canvas(float(self.protocol["x"]), float(self.protocol["y"]))
-            canvas.create_oval(px - 24, py - 24, px + 24, py + 24, outline=COLORS["crit"], width=2)
-            canvas.create_text(px, py - 32, text=self.protocol["incident_id"], fill=COLORS["crit"],
+            px = min(max(px, left + 26), right - 26)
+            py = min(max(py, top + 26), bottom - 26)
+            canvas.create_oval(px - 22, py - 22, px + 22, py + 22, outline=COLORS["crit"], width=2)
+            label_y = py - 32 if py - 32 > top + 8 else py + 32
+            canvas.create_text(px, label_y, text=self.protocol["incident_id"], fill=COLORS["crit"],
                                font=(FONT_MONO, 9, "bold"))
 
         # Трек
