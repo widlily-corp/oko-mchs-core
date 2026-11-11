@@ -75,16 +75,19 @@ class OkoMchsOperatorApp(ctk.CTk):
         self.geometry("1280x820")
         self.minsize(1120, 720)
 
-        # Переменные полетной модели и состояния
-        self.is_flying = False
+        # Переменные полетной модели и состояния (Демо-режим активен по умолчанию)
+        self.is_flying = True
         self.drone_x = 75.0
         self.drone_y = 220.0
-        self.altitude = 0.0
+        self.altitude = 1.0
         self.battery = 98.4
-        self.flight_speed = 0.0
-        self.flight_phase = "ДЕЖУРСТВО НА БАЗЕ"
+        self.flight_speed = 3.2
+        self.flight_phase = "ВЗЛЕТ И ПАТРУЛИРОВАНИЕ СЕКТОРА"
         self.thermal_mode = False
         self.selected_hazard_key = 'FIRE'
+        self.hover_timer = 0
+        self.hazards_sequence = ['FIRE', 'OIL', 'FLOOD', 'WASTE']
+        self.seq_index = 0
         self.active_detection = False
         self.flight_trail = []
         self.frame_counter = 0
@@ -224,10 +227,10 @@ class OkoMchsOperatorApp(ctk.CTk):
 
         self.btn_mission = ctk.CTkButton(
             btn_box,
-            text="🚀 СТАРТ ПАТРУЛИРОВАНИЯ",
+            text="⏹ АВАРИЙНЫЙ ВОЗВРАТ (RTL)",
             font=ctk.CTkFont(size=13, weight="bold"),
-            fg_color="#FF6B35",
-            hover_color="#E85924",
+            fg_color="#D32F2F",
+            hover_color="#B71C1C",
             width=210, height=36,
             command=self.toggle_mission
         )
@@ -339,8 +342,16 @@ class OkoMchsOperatorApp(ctk.CTk):
                         fg_color="#D32F2F" if target_hazard['threat'] == 'CRITICAL' else "#F57C00",
                         text_color="#FFFFFF"
                     )
-                    if self.frame_counter % 30 == 0:
-                        self.log_event(f"🔥 АВТОДЕТЕКЦИЯ: {target_hazard['title']} (Площадь ~{target_hazard['area_sq_m']} м²).")
+                    self.hover_timer += 1
+                    if self.hover_timer == 1:
+                        self.log_event(f"🚨 АВТОДЕТЕКЦИЯ: {target_hazard['title']} | Площадь ~{target_hazard['area_sq_m']} м².")
+                    if self.hover_timer > 90:  # ~4.5 сек зависания и детального сканирования
+                        self.hover_timer = 0
+                        self.seq_index = (self.seq_index + 1) % len(self.hazards_sequence)
+                        self.selected_hazard_key = self.hazards_sequence[self.seq_index]
+                        map_ru = {'FIRE': 'ПОЖАР', 'OIL': 'НЕФТЬ', 'FLOOD': 'ПАВОДОК', 'WASTE': 'СВАЛКА'}
+                        self.hazard_selector.set(map_ru[self.selected_hazard_key])
+                        self.log_event(f"Патруль: переход к сектору {HAZARDS_DB[self.selected_hazard_key]['title']}.")
 
             self.battery = max(12.0, self.battery - 0.015)
             self.flight_trail.append((self.drone_x, self.drone_y))
