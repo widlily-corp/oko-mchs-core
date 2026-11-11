@@ -24,8 +24,75 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
+import threading
+import time
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 WINDOW_NAME = "ОКО МЧС: ВИДЕОПОТОК С БОРТОВОЙ КАМЕРЫ БПЛА (OpenCV + HUD)"
+STREAM_PORT = 8080
+latest_jpeg_frame = None
+frame_lock = threading.Lock()
+
+class MchsStreamHandler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        pass  # Отключаем спам в консоль от HTTP запросов
+
+    def do_GET(self):
+        global latest_jpeg_frame, frame_lock
+        if self.path in ('/', '/index.html'):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.end_headers()
+            html = """<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>ОКО МЧС — Камера БПЛА</title>
+<style>
+body { background: #0b0f19; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; margin: 0; padding: 20px; }
+h1 { color: #38bdf8; font-size: 22px; margin-bottom: 6px; letter-spacing: 1px; }
+.sub { color: #94a3b8; font-size: 14px; margin-bottom: 20px; }
+.frame-box { display: inline-block; padding: 6px; background: #1e293b; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); border: 1px solid #334155; }
+img { display: block; border-radius: 8px; max-width: 90vw; height: auto; }
+.badge { display: inline-block; padding: 4px 12px; margin-top: 14px; background: #065f46; color: #34d399; border-radius: 9999px; font-size: 13px; font-weight: bold; }
+</style></head>
+<body>
+<h1>ОКО МЧС — ПРЯМОЙ ЭФИР С БОРТОВОЙ КАМЕРЫ БПЛА</h1>
+<div class="sub">Gazebo 11 3D Simulation &bull; ROS 2 Topic: <code>/mchs/camera/image_raw</code> &bull; OpenCV AI Detection</div>
+<div class="frame-box"><img src="/stream" alt="Live Stream" /></div>
+<br><div class="badge">&bull; ТАКТИЧЕСКИЙ ЭФИР АКТИВЕН (30 FPS HD)</div>
+</body></html>"""
+            self.wfile.write(html.encode('utf-8'))
+        elif self.path == '/snapshot.jpg':
+            with frame_lock:
+                frame_data = latest_jpeg_frame
+            if frame_data:
+                self.send_response(200)
+                self.send_header('Content-Type', 'image/jpeg')
+                self.send_header('Content-Length', str(len(frame_data)))
+                self.end_headers()
+                self.wfile.write(frame_data)
+            else:
+                self.send_response(503)
+                self.end_headers()
+        elif self.path == '/stream':
+            self.send_response(200)
+            self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=frame')
+            self.end_headers()
+            while True:
+                with frame_lock:
+                    frame_data = latest_jpeg_frame
+                if frame_data is not None:
+                    try:
+                        self.wfile.write(b'--frame\r\n')
+                        self.send_header('Content-Type', 'image/jpeg')
+                        self.send_header('Content-Length', str(len(frame_data)))
+                        self.end_headers()
+                        self.wfile.write(frame_data)
+                        self.wfile.write(b'\r\n')
+                    except Exception:
+                        break
+                time.sleep(0.033)
+        else:
+            self.send_response(404)
+            self.end_headers()
 
 class MchsVisionNode(Node):
     def __init__(self):
@@ -39,7 +106,19 @@ class MchsVisionNode(Node):
         )
         self.frame_count = 0
         self.window_initialized = False
+
+        # Запуск фонового веб-стримера видеопотока на порту 8080
+        self.start_web_streamer()
         self.get_logger().info('>>> Нода зрения МЧС активна. Ожидание видеопотока из Gazebo (/mchs/camera/image_raw)...')
+        self.get_logger().info(f'>>> Веб-трансляция камеры доступна на: http://localhost:{STREAM_PORT}')
+
+    def start_web_streamer(self):
+        try:
+            server = HTTPServer(('0.0.0.0', STREAM_PORT), MchsStreamHandler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+        except Exception as e:
+            self.get_logger().warn(f'Не удалось запустить веб-стример на порту {STREAM_PORT}: {e}')
 
     def image_callback(self, msg):
         try:
@@ -109,6 +188,16 @@ class MchsVisionNode(Node):
         if self.frame_count % 30 == 0:
             status_desc = "🔥 ОЧАГ ЧС ОБНАРУЖЕН!" if fire_detected else "Сканирование полигона..."
             self.get_logger().info(f"[КАМЕРА БПЛА] Кадр #{self.frame_count} ({w}x{h}) | {status_desc}")
+
+        # Кодирование кадра в JPEG для веб-трансляции
+        global latest_jpeg_frame, frame_lock
+        try:
+            ret, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            if ret:
+                with frame_lock:
+                    latest_jpeg_frame = jpeg.tobytes()
+        except Exception as e:
+            pass
 
         # Отображение окна с камерой
         try:

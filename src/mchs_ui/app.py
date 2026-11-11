@@ -13,6 +13,8 @@ import math
 import time
 import datetime
 import json
+import threading
+import urllib.request
 import tkinter as tk
 import customtkinter as ctk
 import cv2
@@ -86,6 +88,12 @@ class OkoMchsOperatorApp(ctk.CTk):
         self.active_detection = False
         self.flight_trail = []
         self.frame_counter = 0
+
+        # Фоновое подключение к живому видеопотоку бортовой камеры Gazebo/ROS2 (порт 8080)
+        self.live_stream_frame = None
+        self.is_live_stream_active = False
+        self.stream_thread = threading.Thread(target=self.poll_live_stream, daemon=True)
+        self.stream_thread.start()
 
         self.setup_ui()
         self.log_event("Инициализация системы 'Око МЧС'. Связь с БПЛА установлена (RTK FIX).")
@@ -414,8 +422,43 @@ class OkoMchsOperatorApp(ctk.CTk):
             c.create_oval(px-4, py-4, px+4, py+4, fill="#263238", outline="#00E5FF", width=1)
         c.create_oval(dx-5, dy-5, dx+5, dy+5, fill="#FF6B35", outline="#FFFFFF", width=2)
 
+    def poll_live_stream(self):
+        """Опрос веб-потока камеры бортового компьютера БПЛА (порт 8080)."""
+        while True:
+            try:
+                req = urllib.request.Request("http://127.0.0.1:8080/snapshot.jpg", headers={'User-Agent': 'MchsOperatorApp'})
+                with urllib.request.urlopen(req, timeout=0.25) as response:
+                    img_array = np.asarray(bytearray(response.read()), dtype=np.uint8)
+                    frame = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+                    if frame is not None:
+                        self.live_stream_frame = frame
+                        self.is_live_stream_active = True
+            except Exception:
+                self.is_live_stream_active = False
+            time.sleep(0.04)  # ~25 FPS опрос
+
     def draw_camera(self):
         h, w = 360, 520
+
+        # Если доступен реальный видеопоток из Gazebo 11 / ROS 2
+        if self.is_live_stream_active and self.live_stream_frame is not None:
+            frame = cv2.resize(self.live_stream_frame, (w, h))
+            if self.thermal_mode:
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                frame = cv2.applyColorMap(gray, cv2.COLORMAP_INFERNO)
+            # Бейдж реального подключения к симуляции
+            cv2.rectangle(frame, (10, 10), (230, 32), (0, 80, 0), -1)
+            cv2.putText(frame, "LIVE: ROS 2 GAZEBO 11", (16, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 120), 2)
+            cv2.circle(frame, (215, 21), 5, (0, 255, 0), -1)
+
+            # Отображаем в UI
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            img = Image.fromarray(rgb_frame)
+            self.tk_cam_image = ImageTk.PhotoImage(image=img)
+            self.cam_canvas.create_image(0, 0, anchor="nw", image=self.tk_cam_image)
+            return
+
+        # Иначе — автономный тактический синтетический рендер
         frame = np.zeros((h, w, 3), dtype=np.uint8)
         frame[:] = (20, 35, 18)  # Фоновая растительность полигона
 

@@ -17,6 +17,25 @@ export PULSE_SERVER="${PULSE_SERVER:-/mnt/wslg/PulseServer}"
 export LIBGL_ALWAYS_SOFTWARE=1
 export GALLIUM_DRIVER=llvmpipe
 export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
+export GAZEBO_MODEL_DATABASE_URI=""
+
+# Инициализируем корректную геометрию окна Gazebo (1024x768) и ракурс камеры
+mkdir -p "$HOME/.gazebo"
+cat << 'EOF' > "$HOME/.gazebo/gui.ini"
+[geometry]
+x=50
+y=50
+width=1024
+height=768
+
+[camera]
+x=0
+y=-25
+z=15
+roll=0
+pitch=0.6
+yaw=1.57
+EOF
 
 # Пути к 3D-моделям
 export GAZEBO_MODEL_PATH="$REPO_DIR/src/mchs_simulation/models:/usr/share/gazebo-11/models:$GAZEBO_MODEL_PATH"

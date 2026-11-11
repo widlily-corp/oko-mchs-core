@@ -8,7 +8,7 @@
 import os
 import sys
 from launch import LaunchDescription
-from launch.actions import ExecuteProcess, SetEnvironmentVariable
+from launch.actions import ExecuteProcess, SetEnvironmentVariable, TimerAction
 
 def generate_launch_description():
     pkg_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -29,6 +29,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         SetEnvironmentVariable(name='GAZEBO_MODEL_PATH', value=new_model_path),
+        SetEnvironmentVariable(name='GAZEBO_MODEL_DATABASE_URI', value=''),
         SetEnvironmentVariable(name='DISPLAY', value=display_env),
         SetEnvironmentVariable(name='WAYLAND_DISPLAY', value=wayland_env),
         SetEnvironmentVariable(name='XDG_RUNTIME_DIR', value=runtime_dir),
@@ -48,10 +49,15 @@ def generate_launch_description():
             output='screen'
         ),
         
-        # 2. Графический клиент Gazebo (3D визуал полета дрона над ареной)
-        ExecuteProcess(
-            cmd=['gzclient', '--verbose'],
-            output='screen'
+        # 2. Графический клиент Gazebo (3D визуал полета дрона над ареной) с задержкой 3с
+        TimerAction(
+            period=3.0,
+            actions=[
+                ExecuteProcess(
+                    cmd=['gzclient', '--verbose'],
+                    output='screen'
+                )
+            ]
         )
     ])
 
