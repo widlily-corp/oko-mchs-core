@@ -497,9 +497,9 @@ def build_world():
     add(waste.xml())
 
     # --- Дрон МЧС -----------------------------------------------------------
-    add('''    <!-- Кастомный дрон МЧС (патрулирует на высоте 8 м) -->
+    add('''    <!-- Крупный дрон МЧС largedrone (STL by Studio Mechanik), высота 22 м -->
     <include>
-      <uri>model://mchs_drone</uri>
+      <uri>model://largedrone</uri>
       <pose>0 0 22.0 0 0 0</pose>
     </include>
 ''')
