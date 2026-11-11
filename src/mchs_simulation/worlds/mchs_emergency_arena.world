@@ -214,10 +214,9 @@
       </link>
     </model>
 
-    <!-- Включение кастомного дрона МЧС -->
+    <!-- Крупный спасательный БПЛА МЧС (STL by Studio Mechanik) -->
     <include>
-      <uri>model://mchs_drone</uri>
-      <pose>0 0 0.12 0 0 0</pose>
+      <uri>model://largedrone</uri>
     </include>
   </world>
 </sdf>
