@@ -43,6 +43,7 @@ import json
 import math
 import os
 import queue
+import random
 import subprocess
 import sys
 import threading
@@ -277,6 +278,64 @@ def save_hazards(hazards: dict, path: str | os.PathLike | None = None) -> Path:
         except OSError:
             pass
     return target
+
+
+#: Порядок очагов для кнопки «🎲 СЛУЧАЙНО» (совпадает с HAZARDS_DB).
+RANDOM_HAZARD_ORDER = ("FIRE", "OIL", "FLOOD", "WASTE")
+
+
+def plan_random_hazards(
+    drone_x: float,
+    drone_y: float,
+    keys=None,
+    *,
+    seed: int | None = None,
+    ahead_min_m: float = 12.0,
+    ahead_max_m: float = 58.0,
+    lateral_m: float = 22.0,
+    min_gap_m: float = 14.0,
+) -> dict[str, tuple[float, float]]:
+    """Раскидывает очаги ЧС в зону обзора бортовой камеры дрона.
+
+    Камера смотрит строго в +X и вниз на 45°, поэтому очаги, поставленные
+    в полосу ``X ∈ [дрон + ahead_min_m, дрон + ahead_max_m]``,
+    ``Y ∈ [дрон ± lateral_m]``, детектор видит уже в следующем кадре —
+    на демонстрации это доказывает детекцию за считанные секунды.
+
+    Возвращает ``{ключ: (x, y)}``; координаты ограничены ареной ±95 м.
+    Если свободного места нет (дрон у края), очаги ставятся с отступом.
+    """
+    keys = list(keys) if keys else list(RANDOM_HAZARD_ORDER)
+    rng = random.Random(seed) if seed is not None else random.Random()
+    limit = 95.0
+    drone_x = float(drone_x)
+    drone_y = float(drone_y)
+    center_y = min(limit, max(-limit, drone_y))
+    band_low = max(-limit, drone_x + ahead_min_m)
+    band_high = min(limit, drone_x + ahead_max_m)
+    if band_high < band_low:  # дрон у правого края: впереди места нет
+        band_low = band_high = min(limit, max(-limit, drone_x + ahead_min_m))
+    placed: dict[str, tuple[float, float]] = {}
+    for key in keys:
+        for attempt in range(400):
+            x = band_low if band_low >= band_high else rng.uniform(band_low, band_high)
+            if attempt < 250:
+                y = center_y + rng.uniform(-lateral_m, lateral_m)
+            else:  # тесно — расширяем полосу по Y на всю арену
+                y = rng.uniform(-limit, limit)
+            x = min(limit, max(-limit, x))
+            y = min(limit, max(-limit, y))
+            if any(math.hypot(x - px, y - py) < min_gap_m
+                   for px, py in placed.values()):
+                continue
+            placed[key] = (round(x, 1), round(y, 1))
+            break
+        else:
+            x = band_low
+            step = (2.0 * lateral_m) / max(1, len(keys) - 1)
+            y = min(limit, max(-limit, center_y - lateral_m + len(placed) * step))
+            placed[key] = (round(x, 1), round(y, 1))
+    return placed
 
 
 #: Очаги ЧС: встроенные значения, перекрытые файлом config/hazards.json.
@@ -794,6 +853,7 @@ class OkoMchsApp(ctk.CTk):
         self._last_detection_signature = None
         self._last_detection_log = 0.0
         self._mission_cmd_until = 0.0
+        self._last_randomize_ts = 0.0
 
         # Отчёты оператора и перетаскивание очагов
         self.reports_dir = resolve_repo_path(self.mission.get("reports_dir"), REPORTS_DIR)
@@ -999,6 +1059,14 @@ class OkoMchsApp(ctk.CTk):
         )
         self.selector.set(HAZARDS_DB[self.hazard_key]["short"])
         self.selector.pack(side="right")
+
+        self.btn_random = ctk.CTkButton(
+            head, text="🎲 СЛУЧАЙНО", width=118, height=26,
+            font=ctk.CTkFont(FONT_UI, 11, "bold"),
+            fg_color=COLORS["warn"], hover_color="#D97706", text_color="#0B0F14",
+            command=self.randomize_hazards,
+        )
+        self.btn_random.pack(side="right", padx=(8, 0))
 
         self.map_canvas = tk.Canvas(card, bg=COLORS["panel_alt"], highlightthickness=0, bd=0)
         self.map_canvas.pack(fill="both", expand=True, padx=12, pady=(0, 12))
@@ -1213,7 +1281,8 @@ class OkoMchsApp(ctk.CTk):
         ctk.CTkLabel(
             card,
             text="Space — старт/RTL · T — тепловизор · O — оверлей · E — экспорт\n"
-                 "P — снимок · R — запись видео · Ctrl+O — папка отчётов",
+                 "P — снимок · R — запись · G — случайные очаги · Ctrl+O — отчёты",
+            wraplength=560,
             font=ctk.CTkFont(FONT_UI, 9),
             text_color=COLORS["muted"],
             justify="center",
@@ -1246,6 +1315,7 @@ class OkoMchsApp(ctk.CTk):
         self.bind("<Key-e>", lambda _event: self.export_protocol("json"))
         self.bind("<Key-p>", lambda _event: self.save_snapshot())
         self.bind("<Key-r>", lambda _event: self.toggle_recording())
+        self.bind("<Key-g>", lambda _event: self.randomize_hazards())
         self.bind("<Control-o>", lambda _event: self.open_reports_folder())
         self.bind("<Key-d>", lambda _event: self.build_diagnostic_bundle())
         self.bind("<Control-d>", lambda _event: self.build_diagnostic_bundle())
@@ -2132,6 +2202,63 @@ class OkoMchsApp(ctk.CTk):
             f" --hazard {key.lower()} --x {x:.1f} --y {y:.1f}",
         ]
         threading.Thread(target=self._run_gazebo_command, args=(key, command), daemon=True).start()
+
+    # -- случайное перемещение очагов (доказательство детекции) -----------
+
+    def randomize_hazards(self) -> None:
+        """🎲 Переставляет все очаги в зону обзора дрона и применяет в Gazebo.
+
+        Кнопка «🎲 СЛУЧАЙНО» (или клавиша ``G``): координаты генерируются
+        рядом с текущим дроном, сохраняются в ``config/hazards.json`` и одним
+        вызовом ``arena_controller.py --positions`` переносят модели в Gazebo.
+        Нода зрения перечитывает конфиг очагов каждые 2 с, поэтому новая
+        тревога в АРМ появляется почти сразу.
+        """
+        now = time.time()
+        if now - getattr(self, "_last_randomize_ts", 0.0) < 5.0:
+            self.log("🎲 Подождите: предыдущее перемещение ещё применяется в Gazebo.")
+            return
+        self._last_randomize_ts = now
+        positions = plan_random_hazards(self.drone_x, self.drone_y, list(HAZARDS_DB))
+        for key, (x, y) in positions.items():
+            hazard = HAZARDS_DB.get(key)
+            if hazard is None:
+                continue
+            hazard["x"] = x
+            hazard["y"] = y
+        self._save_hazards()
+        summary = " · ".join(
+            f"{HAZARDS_DB[key]['short']} X {x:.0f} / Y {y:.0f}"
+            for key, (x, y) in positions.items() if key in HAZARDS_DB
+        )
+        self.log(f"🎲 СЛУЧАЙНОЕ ПЕРЕМЕЩЕНИЕ ОЧАГОВ: {summary}")
+        self.log("    Очаги в полосе обзора камеры — детекция сработает в ближайшие секунды.")
+        self._last_detection_signature = None
+        if core_log_event:
+            core_log_event("GCS_UI", "OPERATOR_ACTION", {
+                "action": "RANDOMIZE_HAZARDS",
+                "positions": {key: [x, y] for key, (x, y) in positions.items()},
+                "drone_x": round(self.drone_x, 1),
+                "drone_y": round(self.drone_y, 1),
+            })
+        self._apply_hazards_in_gazebo(positions)
+
+    def _apply_hazards_in_gazebo(self, positions: dict) -> None:
+        """Двигает все очаги в Gazebo одним процессом arena_controller.py."""
+        if sys.platform != "win32":
+            self.log("Перемещение в Gazebo пропущено: wsl.exe доступен только на Windows.")
+            return
+        payload = {key.lower(): [float(x), float(y)]
+                   for key, (x, y) in positions.items()}
+        json_payload = json.dumps(payload, ensure_ascii=False)
+        distro = os.environ.get("WSL_DISTRO_NAME") or "Ubuntu-22.04"
+        command = [
+            "wsl.exe", "-d", distro, "-e", "bash", "-lc",
+            "cd /root/oko-mchs-core && python3 src/mchs_simulation/scripts/arena_controller.py"
+            f" --positions '{json_payload}'",
+        ]
+        threading.Thread(target=self._run_gazebo_command,
+                         args=("СЛУЧАЙНЫЕ ОЧАГИ", command), daemon=True).start()
 
     def _run_gazebo_command(self, key: str, command: list[str]) -> None:
         """Выполняет wsl.exe-команду и пишет её результат в журнал дежурного."""

@@ -368,7 +368,7 @@ class MchsVisionNode(Node):
         if self.streamer is None:
             return
         now = time.time()
-        if now - self._hazards_loaded_at > 10.0:
+        if now - self._hazards_loaded_at > 2.0:
             self._load_hazards()
         pose = self._pose
         if self._speed_mps > 1.0:

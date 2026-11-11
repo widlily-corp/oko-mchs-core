@@ -294,6 +294,46 @@ def print_hazard_list():
         print(f"  • --hazard {key:<6} -> {cfg['label']} (Model: {cfg['name']})")
     print("=============================================\n")
 
+def apply_positions(raw: str) -> int:
+    """Перемещает несколько очагов за один запуск (одна инициализация rclpy).
+
+    Используется кнопкой «🎲 СЛУЧАЙНО» в АРМ: все четыре очага переезжают
+    одной командой и без лишних задержек на старт ROS 2.
+
+    Формат: ``{"fire": [x, y], "oil": [x, y], ...}`` (лишние ключи
+    игнорируются, z берётся по умолчанию для типа очага).
+    """
+    try:
+        payload = json.loads(raw)
+    except ValueError as exc:
+        print(f"[ARENA CONTROLLER] ❌ --positions: некорректный JSON: {exc}")
+        return 2
+    if not isinstance(payload, dict):
+        print("[ARENA CONTROLLER] ❌ --positions: ожидается объект {ключ: [x, y]}")
+        return 2
+
+    ok = True
+    for key, cfg in HAZARD_MODELS.items():
+        if key not in payload:
+            continue
+        value = payload[key]
+        try:
+            if isinstance(value, dict):
+                x = float(value["x"])
+                y = float(value["y"])
+                z = float(value.get("z", cfg["default_z"]))
+            else:
+                x = float(value[0])
+                y = float(value[1])
+                z = float(value[2]) if len(value) > 2 else float(cfg["default_z"])
+        except (KeyError, IndexError, TypeError, ValueError):
+            print(f"[ARENA CONTROLLER] ❌ {key}: некорректные координаты {value!r}")
+            ok = False
+            continue
+        ok = move_hazard(key, x, y, z) and ok
+    return 0 if ok else 1
+
+
 def main():
     parser = argparse.ArgumentParser(description="MCHS Dynamic Arena Hazard Controller")
     parser.add_argument('--hazard', choices=['fire', 'oil', 'flood', 'waste'], help="Тип ЧС для перемещения")
@@ -302,8 +342,13 @@ def main():
     parser.add_argument('--z', type=float, default=None, help="Высота Z")
     parser.add_argument('--random', action='store_true', help="Случайно перемешать все объекты")
     parser.add_argument('--list', action='store_true', help="Показать список объектов")
+    parser.add_argument('--positions',
+                        help="JSON с координатами всех очагов: {\"fire\": [x, y], ...}")
 
     args = parser.parse_args()
+
+    if args.positions:
+        sys.exit(apply_positions(args.positions))
 
     if args.list:
         print_hazard_list()
