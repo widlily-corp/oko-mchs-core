@@ -13,6 +13,12 @@ env/
 venv/
 ENV/
 
+# Python test / coverage cache
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
 # Gazebo cache & logs
 *.log
 *.orig
