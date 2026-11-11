@@ -6,6 +6,7 @@ Provides:
 - log_event: Machine-readable JSONL event journal.
 - install_crash_handler: Post-mortem crash dump generator with variable inspection.
 - BlackBoxRecorder: Non-blocking onboard flight telemetry recorder (CSV/JSONL).
+- MissionVideoReporter: Offline tactical video report compiler.
 """
 
 from .blackbox import (
@@ -25,6 +26,10 @@ from .logger import (
     reset_logging,
     set_log_dir,
 )
+from .video_reporter import (
+    MissionVideoReporter,
+    VideoReportConfig,
+)
 
 __version__ = "1.0.0"
 
@@ -42,5 +47,7 @@ __all__ = [
     "BlackBoxRecorder",
     "TelemetryRecord",
     "CSV_HEADER",
+    "MissionVideoReporter",
+    "VideoReportConfig",
     "__version__",
 ]

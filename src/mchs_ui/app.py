@@ -194,6 +194,17 @@ HAZARDS_DB = {
         "details": "Несанкционированная свалка, 12 бочек химреагентов",
         "response": "Рекомендован наряд: 1 АЦ-40, разведгруппа 4 чел., вывоз отходов.",
     },
+    "HUMAN": {
+        "title": "Пострадавший (человек)",
+        "short": "ЧЕЛОВЕК",
+        "threat": "CRITICAL",
+        "color": "#00E5FF",
+        "x": 15.0,
+        "y": -22.0,
+        "area_sq_m": 1.8,
+        "details": "Обнаружен человек в сигнальном жилете, требуется эвакуация",
+        "response": "Рекомендован наряд: поисково-спасательная группа 4 чел., санитарный вертолёт.",
+    },
 }
 
 #: Встроенные значения — страховка, если config/hazards.json недоступен.
@@ -1276,7 +1287,13 @@ class OkoMchsApp(ctk.CTk):
             row, text="📦 ЛОГИ", height=30, font=ctk.CTkFont(FONT_UI, 11, "bold"),
             fg_color="#37474F", hover_color="#455A64", command=self.build_diagnostic_bundle,
         )
-        self.btn_diag.pack(side="left", expand=True, fill="x", padx=(2, 0))
+        self.btn_diag.pack(side="left", expand=True, fill="x", padx=2)
+
+        self.btn_video_rep = ctk.CTkButton(
+            row, text="🎬 ВИДЕОРАПОРТ", height=30, font=ctk.CTkFont(FONT_UI, 11, "bold"),
+            fg_color="#0D47A1", hover_color="#1565C0", command=self.compile_mission_video_report,
+        )
+        self.btn_video_rep.pack(side="left", expand=True, fill="x", padx=(2, 0))
 
         ctk.CTkLabel(
             card,
@@ -2368,11 +2385,24 @@ class OkoMchsApp(ctk.CTk):
             canvas.create_text(px, py + radius + 10, text=hazard["short"], fill=hazard["color"],
                                font=(FONT_UI, 8, "bold"))
 
-        # Отметка очага из протокола
+        # Отметка очага из протокола и анимированная пульсирующая подсветка в реальном времени
         if self.protocol and self.protocol.get("x") is not None and self.protocol.get("y") is not None:
             px, py = self._world_to_canvas(float(self.protocol["x"]), float(self.protocol["y"]))
-            canvas.create_oval(px - 24, py - 24, px + 24, py + 24, outline=COLORS["crit"], width=2)
-            canvas.create_text(px, py - 32, text=self.protocol["incident_id"], fill=COLORS["crit"],
+            is_victim = (
+                str(self.protocol.get("hazard_type", "")).upper() in ("VICTIM", "HUMAN")
+                or "ЧЕЛОВЕК" in str(self.protocol.get("title", "")).upper()
+            )
+            ripple_color = "#00E5FF" if is_victim else COLORS["crit"]
+
+            # Анимированные концентрические круги радара (Radar Ripple)
+            pulse_phase = (self.frame_no % 30) / 30.0
+            for i in range(3):
+                phase_i = (pulse_phase + i / 3.0) % 1.0
+                r_i = int(12 + phase_i * 32)
+                canvas.create_oval(px - r_i, py - r_i, px + r_i, py + r_i, outline=ripple_color, width=2 if phase_i < 0.5 else 1)
+
+            canvas.create_oval(px - 14, py - 14, px + 14, py + 14, fill=ripple_color, outline="#FFFFFF", width=2)
+            canvas.create_text(px, py - 38, text=self.protocol["incident_id"], fill=ripple_color,
                                font=(FONT_MONO, 9, "bold"))
 
         # Трек
