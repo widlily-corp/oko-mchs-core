@@ -44,7 +44,7 @@ if ! command -v ros2 >/dev/null 2>&1; then
 fi
 
 export GAZEBO_MODEL_PATH="$REPO_DIR/src/mchs_simulation/models:/usr/share/gazebo-11/models:${GAZEBO_MODEL_PATH:-}"
-export PYTHONPATH="$REPO_DIR/src:${PYTHONPATH:-}"
+export PYTHONPATH="$REPO_DIR/src:$REPO_DIR/src/mchs_vision:$REPO_DIR/src/mchs_core:$REPO_DIR/src/mchs_control:$REPO_DIR/src/mchs_ui:${PYTHONPATH:-}"
 export LIBGL_ALWAYS_SOFTWARE=1
 export GALLIUM_DRIVER=llvmpipe
 export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
