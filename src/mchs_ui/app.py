@@ -411,7 +411,7 @@ class OkoMchsOperatorApp(ctk.CTk):
         c.create_line(dx - arm, dy - arm, dx + arm, dy + arm, fill="#FFFFFF", width=3)
         c.create_line(dx - arm, dy + arm, dx + arm, dy - arm, fill="#FFFFFF", width=3)
         for px, py in [(dx-arm, dy-arm), (dx+arm, dy-arm), (dx-arm, dy+arm), (dx+arm, dy+arm)]:
-            c.create_oval(px-4, py-4, px+4, py-4, fill="#263238", outline="#00E5FF", width=1)
+            c.create_oval(px-4, py-4, px+4, py+4, fill="#263238", outline="#00E5FF", width=1)
         c.create_oval(dx-5, dy-5, dx+5, dy+5, fill="#FF6B35", outline="#FFFFFF", width=2)
 
     def draw_camera(self):
@@ -479,7 +479,7 @@ class OkoMchsOperatorApp(ctk.CTk):
         cv2.line(frame, (int(w/2), int(h/2) - 16), (int(w/2), int(h/2) + 16), (0, 230, 255), 1)
 
         # Верхняя плашка видеопотока
-        mode_text = "THERMAL FLIR 8-14um" if self.thermal_mode else "OPTICAL 4K RGB"
+        mode_text = "THERMAL FLIR 8-14um" if self.thermal_mode else "OPTICAL HD 720p (1280x720)"
         cv2.putText(frame, f"REC [LIVE] | {mode_text} | FPS: 30.0", (12, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 230, 255), 1)
 
         # Конвертация в Tkinter

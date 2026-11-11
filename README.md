@@ -54,8 +54,27 @@ python app.py
 # Вход в терминал разработчика
 wsl.exe -d Ubuntu-22.04
 
-# Запуск полного комплекса
+# Инициализация окружения ROS 2
+source /opt/ros/humble/setup.bash
+cd /root/oko-mchs-core
+
+# Вариант А: Запуск полного комплекса (Gazebo + Vision + Pilot) в 1 клик
 bash scripts/run_all.sh
+
+# Вариант Б: Запуск только 3D-мира Gazebo с кастомным дроном и ареной ЧС
+ros2 launch src/mchs_simulation/launch/simulation.launch.py
+```
+
+### 3. Динамическое перемещение объектов ЧС для жюри (отдельный терминал):
+```bash
+# Переместить пожар в заданные координаты прямо во время полета БПЛА:
+python3 src/mchs_simulation/scripts/arena_controller.py --hazard fire --x 18.0 --y -6.0
+
+# Переместить нефтяное пятно:
+python3 src/mchs_simulation/scripts/arena_controller.py --hazard oil --x 10.0 --y 12.0
+
+# Случайно перетасовать все 4 объекта ЧС:
+python3 src/mchs_simulation/scripts/arena_controller.py --random
 ```
 
 ---

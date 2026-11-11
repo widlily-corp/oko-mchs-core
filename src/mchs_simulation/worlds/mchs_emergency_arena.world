@@ -18,6 +18,14 @@
       <real_time_update_rate>500</real_time_update_rate>
     </physics>
 
+    <!-- ROS 2 World State Plugin: предоставляет сервисы /gazebo/set_entity_state и /gazebo/get_entity_state -->
+    <plugin name="gazebo_ros_state" filename="libgazebo_ros_state.so">
+      <ros>
+        <namespace>/gazebo</namespace>
+      </ros>
+      <update_rate>50.0</update_rate>
+    </plugin>
+
     <!-- Базовая станция / Вертодром старта БПЛА (Точка 0, 0) -->
     <model name="mchs_base_helipad">
       <static>true</static>
