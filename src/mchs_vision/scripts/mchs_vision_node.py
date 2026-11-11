@@ -14,6 +14,9 @@ if not os.environ.get('WAYLAND_DISPLAY'):
     os.environ['WAYLAND_DISPLAY'] = 'wayland-0'
 if not os.environ.get('XDG_RUNTIME_DIR'):
     os.environ['XDG_RUNTIME_DIR'] = '/mnt/wslg/runtime-dir'
+os.environ['LIBGL_ALWAYS_SOFTWARE'] = '1'
+os.environ['GALLIUM_DRIVER'] = 'llvmpipe'
+os.environ['MESA_LOADER_DRIVER_OVERRIDE'] = 'llvmpipe'
 
 import rclpy
 from rclpy.node import Node

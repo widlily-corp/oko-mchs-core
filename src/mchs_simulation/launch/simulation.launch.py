@@ -32,7 +32,9 @@ def generate_launch_description():
         SetEnvironmentVariable(name='DISPLAY', value=display_env),
         SetEnvironmentVariable(name='WAYLAND_DISPLAY', value=wayland_env),
         SetEnvironmentVariable(name='XDG_RUNTIME_DIR', value=runtime_dir),
-        SetEnvironmentVariable(name='LIBGL_ALWAYS_INDIRECT', value='0'),
+        SetEnvironmentVariable(name='LIBGL_ALWAYS_SOFTWARE', value='1'),
+        SetEnvironmentVariable(name='GALLIUM_DRIVER', value='llvmpipe'),
+        SetEnvironmentVariable(name='MESA_LOADER_DRIVER_OVERRIDE', value='llvmpipe'),
         
         # 1. Сервер физики и плагинов ROS 2
         ExecuteProcess(
