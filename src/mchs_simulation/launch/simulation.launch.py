@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """
 Главный launch-файл симуляции БПЛА 'Око МЧС'.
-Запускает Gazebo 11 с кастомным миром арены ЧС (mchs_emergency_arena.world)
-и регистрирует путь к кастомной 3D-модели дрона mchs_drone.
-
-Поддерживает запуск:
-  1) ros2 launch src/mchs_simulation/launch/simulation.launch.py
-  2) python3 src/mchs_simulation/launch/simulation.launch.py
+Запускает Gazebo 11:
+  - gzserver (физический мир, арена ЧС, сенсоры, плагины ROS 2)
+  - gzclient (графическое 3D-окно симулятора для визуализации полета БПЛА)
 """
 import os
 import sys
@@ -25,19 +22,33 @@ def generate_launch_description():
     else:
         new_model_path = f"{models_path}:{standard_paths}"
 
+    # Настройки WSLg для надежного вывода 3D-графики на экран Windows
+    display_env = os.environ.get('DISPLAY', ':0')
+    wayland_env = os.environ.get('WAYLAND_DISPLAY', 'wayland-0')
+    runtime_dir = os.environ.get('XDG_RUNTIME_DIR', '/mnt/wslg/runtime-dir')
+
     return LaunchDescription([
-        SetEnvironmentVariable(
-            name='GAZEBO_MODEL_PATH',
-            value=new_model_path
-        ),
+        SetEnvironmentVariable(name='GAZEBO_MODEL_PATH', value=new_model_path),
+        SetEnvironmentVariable(name='DISPLAY', value=display_env),
+        SetEnvironmentVariable(name='WAYLAND_DISPLAY', value=wayland_env),
+        SetEnvironmentVariable(name='XDG_RUNTIME_DIR', value=runtime_dir),
+        SetEnvironmentVariable(name='LIBGL_ALWAYS_INDIRECT', value='0'),
+        
+        # 1. Сервер физики и плагинов ROS 2
         ExecuteProcess(
             cmd=[
-                'gazebo',
+                'gzserver',
                 '--verbose',
                 world_path,
                 '-s', 'libgazebo_ros_init.so',
                 '-s', 'libgazebo_ros_factory.so'
             ],
+            output='screen'
+        ),
+        
+        # 2. Графический клиент Gazebo (3D визуал полета дрона над ареной)
+        ExecuteProcess(
+            cmd=['gzclient', '--verbose'],
             output='screen'
         )
     ])
