@@ -5,10 +5,29 @@
 любой из 4 очагов ЧС по координатам для проверки работы БПЛА и компьютерного зрения.
 """
 import sys
+import os
 import argparse
 import random
 import subprocess
 import json
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
+SRC_DIR = os.path.join(REPO_ROOT, "src")
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+try:
+    from mchs_core import get_logger, install_crash_handler, log_event
+except ImportError:
+    get_logger = None  # type: ignore[assignment]
+    install_crash_handler = None  # type: ignore[assignment]
+    log_event = None  # type: ignore[assignment]
+
+if install_crash_handler is not None:
+    install_crash_handler("SIM")
+
+logger = get_logger("arena_controller", subsystem="SIM") if get_logger is not None else None
 
 HAZARD_MODELS = {
     'fire': {
@@ -51,7 +70,9 @@ def move_hazard_ros2(model_name: str, x: float, y: float, z: float) -> bool:
     try:
         import rclpy
         from rclpy.node import Node
-    except ImportError:
+    except ImportError as exc:
+        if logger:
+            logger.warning(f"ROS 2 (rclpy) недоступен для перемещения {model_name}: {exc}")
         return False
 
     try:
@@ -76,7 +97,11 @@ def move_hazard_ros2(model_name: str, x: float, y: float, z: float) -> bool:
             node.destroy_node()
             rclpy.shutdown()
             if res is not None and getattr(res, 'success', False):
+                if logger:
+                    logger.info(f"ROS 2 сервис /gazebo/set_entity_state успешно переместил {model_name} -> ({x:.2f}, {y:.2f}, {z:.2f})")
                 return True
+            if logger:
+                logger.warning(f"ROS 2 сервис /gazebo/set_entity_state вернул статус 'неуспешно' для {model_name}")
             return False
 
         # 2. Если SetEntityState нет, пробуем SetModelState
@@ -96,13 +121,21 @@ def move_hazard_ros2(model_name: str, x: float, y: float, z: float) -> bool:
             node.destroy_node()
             rclpy.shutdown()
             if res is not None and getattr(res, 'success', False):
+                if logger:
+                    logger.info(f"ROS 2 legacy-сервис /gazebo/set_model_state успешно переместил {model_name} -> ({x:.2f}, {y:.2f}, {z:.2f})")
                 return True
+            if logger:
+                logger.warning(f"ROS 2 legacy-сервис /gazebo/set_model_state вернул статус 'неуспешно' для {model_name}")
             return False
 
+        if logger:
+            logger.warning(f"Сервисы /gazebo/set_entity_state и /gazebo/set_model_state не ответили за таймаут для {model_name}")
         node.destroy_node()
         rclpy.shutdown()
         return False
-    except Exception:
+    except Exception as exc:
+        if logger:
+            logger.error(f"Исключение при вызове ROS 2 сервиса Gazebo для {model_name}: {exc}")
         try:
             rclpy.shutdown()
         except Exception:
@@ -112,19 +145,30 @@ def move_hazard_ros2(model_name: str, x: float, y: float, z: float) -> bool:
 def move_hazard_gz_cli(model_name: str, x: float, y: float, z: float) -> bool:
     """Фоллбэк перемещения через утилиту gz model с валидацией активности симулятора."""
     if not is_gazebo_running():
+        if logger:
+            logger.error(f"gz model CLI отменён: Gazebo 11 не запущен (для {model_name})")
         return False
 
     try:
         cmd = ["gz", "model", "-m", model_name, "-x", str(x), "-y", str(y), "-z", str(z)]
         res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=3)
         if res.returncode != 0:
+            if logger:
+                logger.warning(f"gz model CLI вернул код ошибки {res.returncode}: {res.stderr.strip()}")
             return False
             
         # Проверяем, что модель реально присутствует в мире
         info_cmd = ["gz", "model", "-m", model_name, "-i"]
         info_res = subprocess.run(info_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2)
-        return info_res.returncode == 0
-    except Exception:
+        success = (info_res.returncode == 0)
+        if success and logger:
+            logger.info(f"gz model CLI успешно переместил {model_name} -> ({x:.2f}, {y:.2f}, {z:.2f})")
+        elif not success and logger:
+            logger.warning(f"Модель {model_name} отсутствует в мире Gazebo по данным gz model -i")
+        return success
+    except Exception as exc:
+        if logger:
+            logger.error(f"Исключение при выполнении gz model CLI для {model_name}: {exc}")
         return False
 
 def move_hazard(hazard_key: str, x: float, y: float, z: float = None) -> bool:
@@ -132,38 +176,85 @@ def move_hazard(hazard_key: str, x: float, y: float, z: float = None) -> bool:
     model_name = cfg['name']
     target_z = z if z is not None else cfg['default_z']
 
-    print(f"[ARENA CONTROLLER] Перемещение '{cfg['label']}' ({model_name}) -> X={x:.2f}, Y={y:.2f}, Z={target_z:.2f}...")
+    move_msg = f"Перемещение '{cfg['label']}' ({model_name}) -> X={x:.2f}, Y={y:.2f}, Z={target_z:.2f}..."
+    print(f"[ARENA CONTROLLER] {move_msg}")
+    if logger:
+        logger.info(move_msg)
 
     # Проверяем, запущена ли симуляция
     if not is_gazebo_running():
-        print(f"[ARENA CONTROLLER] ❌ Ошибка: Симулятор Gazebo 11 не запущен (процесс gzserver не найден).")
+        err_msg = "Симулятор Gazebo 11 не запущен (процесс gzserver не найден)."
+        print(f"[ARENA CONTROLLER] ❌ Ошибка: {err_msg}")
         print(f"                   Сначала запустите: ros2 launch src/mchs_simulation/launch/simulation.launch.py")
+        if logger:
+            logger.error(f"Ошибка связи с Gazebo: {err_msg}")
+        if log_event is not None:
+            log_event("SIM", "GAZEBO_CONNECTION_ERROR", {
+                "error": err_msg,
+                "target_model": model_name,
+            }, level="ERROR")
         return False
 
     # 1. Попытка через ROS 2 сервис
     success = False
     try:
         success = move_hazard_ros2(model_name, x, y, target_z)
-    except Exception:
+    except Exception as exc:
+        if logger:
+            logger.error(f"Ошибка перемещения через ROS 2 сервис: {exc}")
         success = False
 
     # 2. Фоллбэк через gz model CLI
     if not success:
+        if logger:
+            logger.info(f"Переход на CLI фоллбэк gz model для {model_name}")
         success = move_hazard_gz_cli(model_name, x, y, target_z)
 
     if success:
-        print(f"[ARENA CONTROLLER] ✅ Успешно: {model_name} перемещен в координаты ({x:.2f}, {y:.2f})")
+        succ_msg = f"Успешно: {model_name} перемещен в координаты ({x:.2f}, {y:.2f})"
+        print(f"[ARENA CONTROLLER] ✅ {succ_msg}")
+        if logger:
+            logger.info(succ_msg)
+        if log_event is not None:
+            log_event("SIM", "HAZARD_RELOCATED", {
+                "hazard_key": hazard_key,
+                "model_name": model_name,
+                "label": cfg['label'],
+                "x": float(x),
+                "y": float(y),
+                "z": float(target_z),
+            })
     else:
-        print(f"[ARENA CONTROLLER] ⚠️ Не удалось переместить {model_name}. Убедитесь, что модель присутствует в мире.")
+        fail_msg = f"Не удалось переместить {model_name}. Убедитесь, что модель присутствует в мире."
+        print(f"[ARENA CONTROLLER] ⚠️ {fail_msg}")
+        if logger:
+            logger.warning(fail_msg)
+        if log_event is not None:
+            log_event("SIM", "HAZARD_RELOCATION_FAILED", {
+                "hazard_key": hazard_key,
+                "model_name": model_name,
+                "x": float(x),
+                "y": float(y),
+            }, level="WARNING")
     return success
 
 def randomize_arena():
     """Случайное распределение 4 очагов ЧС в зоне патрулирования (для стресс-теста жюри)."""
     if not is_gazebo_running():
-        print("[ARENA CONTROLLER] ❌ Ошибка: Gazebo не запущен. Невозможно перетасовать объекты.")
+        err_msg = "Gazebo не запущен. Невозможно перетасовать объекты."
+        print(f"[ARENA CONTROLLER] ❌ Ошибка: {err_msg}")
+        if logger:
+            logger.error(f"Ошибка связи с Gazebo: {err_msg}")
+        if log_event is not None:
+            log_event("SIM", "GAZEBO_CONNECTION_ERROR", {"error": err_msg}, level="ERROR")
         return
 
-    print("[ARENA CONTROLLER] 🎲 Случайная перетасовка объектов арены ЧС...")
+    rand_msg = "🎲 Случайная перетасовка объектов арены ЧС..."
+    print(f"[ARENA CONTROLLER] {rand_msg}")
+    if logger:
+        logger.info(rand_msg)
+    if log_event is not None:
+        log_event("SIM", "ARENA_RANDOMIZE_STARTED", {})
     used_positions = []
 
     for key, cfg in HAZARD_MODELS.items():

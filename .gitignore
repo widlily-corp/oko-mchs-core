@@ -26,6 +26,8 @@ htmlcov/
 *~
 .gazebo/
 .ignition/
+logs/
+diagnostic_bundle_*.zip
 
 # IDE & Editor settings
 .vscode/

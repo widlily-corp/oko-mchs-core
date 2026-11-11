@@ -55,6 +55,21 @@ PACKAGE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PACKAGE_ROOT not in sys.path:
     sys.path.insert(0, PACKAGE_ROOT)
 
+REPO_ROOT = os.path.dirname(PACKAGE_ROOT)
+SRC_DIR = os.path.join(REPO_ROOT, "src")
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+try:
+    from mchs_core import get_logger, install_crash_handler, log_event
+except ImportError:
+    get_logger = None  # type: ignore[assignment]
+    install_crash_handler = None  # type: ignore[assignment]
+    log_event = None  # type: ignore[assignment]
+
+if install_crash_handler is not None:
+    install_crash_handler("VISION")
+
 from mchs_vision.config import CameraConfig, DetectorConfig, GeoOrigin
 from mchs_vision.events import EventThrottle
 from mchs_vision.geometry import Pose
@@ -72,6 +87,14 @@ def yaw_from_quaternion(x: float, y: float, z: float, w: float) -> float:
 class MchsVisionNode(Node):
     def __init__(self) -> None:
         super().__init__("mchs_vision_node")
+
+        if install_crash_handler is not None:
+            install_crash_handler("VISION")
+        self.logger = get_logger("mchs_vision", subsystem="VISION") if get_logger is not None else self.get_logger()
+
+        self._fps_start_time: Optional[float] = None
+        self._fps_frames_count = 0
+        self._current_fps = 0.0
 
         self.image_topic = str(self.declare_parameter(
             "image_topic", "/mchs/camera/image_raw").value)
@@ -147,10 +170,18 @@ class MchsVisionNode(Node):
                 self.streamer = LatestFrameStreamer(
                     port=self.stream_port, quality=self.stream_quality
                 )
+                if self.logger:
+                    self.logger.info(
+                        f"HTTP-видеостример запущен: http://127.0.0.1:{self.stream_port}/ (snapshot: /snapshot.jpg)"
+                    )
             except OSError as exc:
                 self.get_logger().warn(
                     f"HTTP-поток на порту {self.stream_port} не запущен: {exc}"
                 )
+                if self.logger:
+                    self.logger.error(
+                        f"Ошибка запуска HTTP-видеостримера на порту {self.stream_port}: {exc}"
+                    )
 
         self.create_subscription(Image, self.image_topic, self._image_callback,
                                  qos_profile_sensor_data)
@@ -161,11 +192,14 @@ class MchsVisionNode(Node):
             Image, self.annotated_topic, 10
         )
 
-        self.get_logger().info(
+        init_msg = (
             ">>> mchs_vision_node запущена: "
             f"image={self.image_topic}, odom={self.odom_topic}, "
             f"event={self.event_topic}, annotated={self.annotated_topic}"
         )
+        self.get_logger().info(init_msg)
+        if self.logger:
+            self.logger.info(init_msg)
         self.get_logger().info(
             f">>> камера: {self.image_width}x{self.image_height}, "
             f"HFOV={self.hfov_deg}°, наклон={self.pitch_down_deg}°, "
@@ -179,10 +213,13 @@ class MchsVisionNode(Node):
                 "геопривязка учитывает перспективу"
             )
         if self.streamer is not None:
-            self.get_logger().info(
+            stream_msg = (
                 f">>> HTTP-поток для АРМ: http://127.0.0.1:{self.stream_port}/ "
                 f"(snapshot: /snapshot.jpg)"
             )
+            self.get_logger().info(stream_msg)
+            if self.logger:
+                self.logger.info(stream_msg)
 
     def _build_pipeline(self, width: int, height: int, enabled,
                         title: str) -> VisionPipeline:
@@ -210,28 +247,36 @@ class MchsVisionNode(Node):
     # Подписки
     # ------------------------------------------------------------------
     def _odom_callback(self, msg: Odometry) -> None:
-        position = msg.pose.pose.position
-        orientation = msg.pose.pose.orientation
-        yaw = yaw_from_quaternion(orientation.x, orientation.y,
-                                  orientation.z, orientation.w)
-        z = float(position.z)
-        if z < self.min_valid_altitude_m:
-            if not self._warned_altitude:
-                self.get_logger().warn(
-                    f"odom.z={z:.2f} м ниже порога {self.min_valid_altitude_m} м; "
-                    f"использую высоту {self.fallback_altitude_m} м. "
-                    "Проверьте плагин высоты Gazebo."
-                )
-                self._warned_altitude = True
-            z = self.fallback_altitude_m
+        try:
+            position = msg.pose.pose.position
+            orientation = msg.pose.pose.orientation
+            yaw = yaw_from_quaternion(orientation.x, orientation.y,
+                                      orientation.z, orientation.w)
+            z = float(position.z)
+            if z < self.min_valid_altitude_m:
+                if not self._warned_altitude:
+                    warn_msg = (
+                        f"odom.z={z:.2f} м ниже порога {self.min_valid_altitude_m} м; "
+                        f"использую высоту {self.fallback_altitude_m} м. "
+                        "Проверьте плагин высоты Gazebo."
+                    )
+                    self.get_logger().warn(warn_msg)
+                    if self.logger:
+                        self.logger.warning(warn_msg)
+                    self._warned_altitude = True
+                z = self.fallback_altitude_m
 
-        self._pose = Pose(
-            x_m=float(position.x),
-            y_m=float(position.y),
-            z_m=z,
-            yaw_rad=yaw,
-        )
-        self._pose_received = True
+            self._pose = Pose(
+                x_m=float(position.x),
+                y_m=float(position.y),
+                z_m=z,
+                yaw_rad=yaw,
+            )
+            self._pose_received = True
+        except Exception as exc:
+            self.get_logger().error(f"Ошибка обработки одометрии: {exc}")
+            if self.logger:
+                self.logger.error(f"Ошибка обработки одометрии /mchs/odom: {exc}")
 
     def _image_callback(self, msg: Image) -> None:
         self._frame_index += 1
@@ -242,19 +287,43 @@ class MchsVisionNode(Node):
             frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         except Exception as exc:  # cv_bridge может кидать разные типы
             self.get_logger().error(f"cv_bridge: {exc}")
+            if self.logger:
+                self.logger.error(f"Ошибка конвертации cv_bridge: {exc}")
             return
 
         if frame is None or frame.size == 0:
             return
 
+        # FPS расчет и мониторинг производительности компьютерного зрения
+        import time
+        now_s = time.time()
+        if self._fps_start_time is None:
+            self._fps_start_time = now_s
+            self._fps_frames_count = 0
+        else:
+            self._fps_frames_count += 1
+            elapsed_fps = now_s - self._fps_start_time
+            if elapsed_fps >= 5.0:
+                self._current_fps = self._fps_frames_count / elapsed_fps
+                if self.logger:
+                    self.logger.info(
+                        f"Vision FPS: {self._current_fps:.1f} (кадр #{self._frame_index}, "
+                        f"{self._fps_frames_count} кадров за {elapsed_fps:.1f} с)"
+                    )
+                self._fps_start_time = now_s
+                self._fps_frames_count = 0
+
         height, width = frame.shape[:2]
         if (width != self.pipeline.camera.width
                 or height != self.pipeline.camera.height):
-            self.get_logger().warn(
+            dim_warn = (
                 f"Размер кадра {width}x{height} не совпал с настройками "
                 f"{self.pipeline.camera.width}x{self.pipeline.camera.height}; "
                 "перестраиваю проектор."
             )
+            self.get_logger().warn(dim_warn)
+            if self.logger:
+                self.logger.warning(dim_warn)
             self.pipeline = self._build_pipeline(
                 width, height, self.pipeline.config.enabled, self.pipeline.title
             )
@@ -276,6 +345,9 @@ class MchsVisionNode(Node):
                 String(data=json.dumps(event, ensure_ascii=False))
             )
             self._log_event(event)
+            if log_event is not None:
+                lvl = "ERROR" if event.get("threat_level") == "CRITICAL" else "WARNING"
+                log_event("VISION", "HAZARD_DETECTED", event, level=lvl)
 
         if self.streamer is not None:
             self.streamer.update(result.annotated)
@@ -308,13 +380,19 @@ class MchsVisionNode(Node):
         if previous == threat:
             return
         self._logged_events[incident_id] = threat
-        self.get_logger().info(
+        msg = (
             f"[{incident_id}] {event.get('hazard_type')} {threat}: "
             f"{event.get('area_sq_m')} м², "
             f"X={event['target_geo']['abs_x']:.1f} "
             f"Y={event['target_geo']['abs_y']:.1f}, "
             f"conf={event.get('confidence')}"
         )
+        self.get_logger().info(msg)
+        if self.logger:
+            if threat == "CRITICAL":
+                self.logger.error(msg)
+            else:
+                self.logger.warning(msg)
 
     def _show_window(self, frame) -> None:
         try:
@@ -330,6 +408,8 @@ class MchsVisionNode(Node):
             self.show_window = False
 
     def destroy_node(self) -> bool:
+        if self.logger:
+            self.logger.info("Остановка ноды бортового зрения VISION.")
         if self.streamer is not None:
             self.streamer.stop()
             self.streamer = None

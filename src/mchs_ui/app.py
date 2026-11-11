@@ -15,6 +15,31 @@ import datetime
 import json
 import threading
 import urllib.request
+from pathlib import Path
+
+# Подключение mchs_core и scripts в sys.path
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SRC_DIR = REPO_ROOT / "src"
+SCRIPTS_DIR = REPO_ROOT / "scripts"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+try:
+    from mchs_core import get_logger, log_event as core_log_event, install_crash_handler
+    logger = get_logger("mchs_gcs", subsystem="GCS_UI")
+    install_crash_handler("GCS_UI")
+except ImportError:
+    import logging
+    logger = logging.getLogger("mchs_gcs")
+    core_log_event = None
+    install_crash_handler = None
+
+try:
+    from diagnose_logs import create_diagnostic_bundle
+except ImportError:
+    create_diagnostic_bundle = None
 
 # --- Windows DPI: окно должно полностью помещаться на экран (100-150%) ---
 if sys.platform == "win32":
@@ -108,6 +133,10 @@ class OkoMchsOperatorApp(ctk.CTk):
         self.is_live_stream_active = False
         self.stream_thread = threading.Thread(target=self.poll_live_stream, daemon=True)
         self.stream_thread.start()
+
+        logger.info("Запуск АРМ Оператора ЦУКС 'Око МЧС' (Windows UI v2.0)")
+        if core_log_event:
+            core_log_event("GCS_UI", "OPERATOR_ACTION", {"action": "APP_START", "status": "INITIALIZED"})
 
         self.setup_ui()
         self.log_event("Инициализация системы 'Око МЧС'. Связь с БПЛА установлена (RTK FIX).")
@@ -212,7 +241,7 @@ class OkoMchsOperatorApp(ctk.CTk):
         self.cam_label.pack(fill="both", expand=True, padx=10, pady=(0, 8))
 
         # 3. Нижняя панель: Телеметрия, Журнал событий и Командные кнопки
-        bottom_frame = ctk.CTkFrame(self, height=170, corner_radius=8, fg_color="#171A21")
+        bottom_frame = ctk.CTkFrame(self, height=185, corner_radius=8, fg_color="#171A21")
         bottom_frame.pack(side="bottom", fill="x", padx=12, pady=(0, 10))
 
         # Телеметрия (Слева)
@@ -249,13 +278,13 @@ class OkoMchsOperatorApp(ctk.CTk):
         self.btn_mission = ctk.CTkButton(
             btn_box,
             text="⏹ АВАРИЙНЫЙ ВОЗВРАТ (RTL)",
-            font=ctk.CTkFont(size=13, weight="bold"),
+            font=ctk.CTkFont(size=12, weight="bold"),
             fg_color="#D32F2F",
             hover_color="#B71C1C",
-            width=210, height=36,
+            width=220, height=32,
             command=self.toggle_mission
         )
-        self.btn_mission.grid(row=0, column=0, padx=4, pady=4)
+        self.btn_mission.grid(row=0, column=0, padx=4, pady=2)
 
         self.btn_report = ctk.CTkButton(
             btn_box,
@@ -263,43 +292,96 @@ class OkoMchsOperatorApp(ctk.CTk):
             font=ctk.CTkFont(size=12, weight="bold"),
             fg_color="#1976D2",
             hover_color="#1565C0",
-            width=210, height=32,
+            width=220, height=32,
             command=self.export_protocol
         )
-        self.btn_report.grid(row=1, column=0, padx=4, pady=4)
+        self.btn_report.grid(row=1, column=0, padx=4, pady=2)
 
-    def log_event(self, text: str):
+        self.btn_diag = ctk.CTkButton(
+            btn_box,
+            text="📦 ДИАГНОСТИЧЕСКИЙ ПАКЕТ",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color="#37474F",
+            hover_color="#455A64",
+            width=220, height=32,
+            command=self.build_diagnostic_bundle
+        )
+        self.btn_diag.grid(row=2, column=0, padx=4, pady=2)
+
+    def log_event(self, text: str, level: str = "INFO"):
         now = datetime.datetime.now().strftime("%H:%M:%S")
         msg = f"[{now}] {text}\n"
-        self.log_textbox.insert("end", msg)
-        self.log_textbox.see("end")
+        try:
+            self.log_textbox.insert("end", msg)
+            self.log_textbox.see("end")
+        except Exception:
+            pass
+
+        lvl = level.upper()
+        if lvl == "WARNING":
+            logger.warning(text)
+        elif lvl == "ERROR":
+            logger.error(text)
+        elif lvl == "CRITICAL":
+            logger.critical(text)
+        else:
+            logger.info(text)
 
     def on_hazard_select(self, val):
         mapping = {"ПОЖАР": 'FIRE', "НЕФТЬ": 'OIL', "ПАВОДОК": 'FLOOD', "СВАЛКА": 'WASTE'}
         self.selected_hazard_key = mapping.get(val, 'FIRE')
         cfg = HAZARDS_DB[self.selected_hazard_key]
-        self.log_event(f"Выбран объект для инспекции: {cfg['title']} ({cfg['details']}).")
+        msg = f"Выбран объект для инспекции: {cfg['title']} ({cfg['details']})."
+        self.log_event(msg)
+        if core_log_event:
+            core_log_event("GCS_UI", "OPERATOR_ACTION", {
+                "action": "SELECT_HAZARD",
+                "sector": val,
+                "hazard_key": self.selected_hazard_key,
+                "title": cfg['title'],
+                "threat": cfg['threat'],
+            })
 
     def toggle_thermal(self):
         self.thermal_mode = not self.thermal_mode
         if self.thermal_mode:
             self.btn_thermal.configure(fg_color="#7B1FA2", hover_color="#6A1B9A", text="🌈 РЕЖИМ RGB (4K)")
-            self.log_event("Сенсор переключен в спектральный режим: FLIR LWIR 8-14 мкм.")
+            sensor_desc = "FLIR LWIR 8-14 мкм"
+            msg = f"Сенсор переключен в спектральный режим: {sensor_desc}."
         else:
             self.btn_thermal.configure(fg_color="#37474F", hover_color="#455A64", text="🌡 ТЕПЛОВИЗОР FLIR")
-            self.log_event("Сенсор переключен в оптический режим: Sony IMX 4K RGB.")
+            sensor_desc = "Sony IMX 4K RGB"
+            msg = f"Сенсор переключен в оптический режим: {sensor_desc}."
+        self.log_event(msg)
+        if core_log_event:
+            core_log_event("GCS_UI", "OPERATOR_ACTION", {
+                "action": "TOGGLE_THERMAL",
+                "thermal_mode": self.thermal_mode,
+                "sensor": sensor_desc,
+            })
 
     def toggle_mission(self):
         if not self.is_flying:
             self.is_flying = True
             self.flight_phase = "ВЗЛЕТ И ПАТРУЛИРОВАНИЕ СЕКТОРА"
             self.btn_mission.configure(text="⏹ АВАРИЙНЫЙ ВОЗВРАТ (RTL)", fg_color="#D32F2F", hover_color="#B71C1C")
-            self.log_event("Команда оператора: ВЗЛЕТ НА ЭШЕЛОН H=8.0м. Начало патрулирования.")
+            msg = "Команда оператора: ВЗЛЕТ НА ЭШЕЛОН H=8.0м. Начало патрулирования."
+            action_type = "START_PATROL"
         else:
             self.is_flying = False
             self.flight_phase = "ВОЗВРАТ НА БАЗУ (RTL)"
             self.btn_mission.configure(text="🚀 СТАРТ ПАТРУЛИРОВАНИЯ", fg_color="#FF6B35", hover_color="#E85924")
-            self.log_event("Команда оператора: ВОЗВРАТ НА БАЗУ (RTL).")
+            msg = "Команда оператора: ВОЗВРАТ НА БАЗУ (RTL)."
+            action_type = "ABORT_RTL"
+        self.log_event(msg)
+        if core_log_event:
+            core_log_event("GCS_UI", "OPERATOR_ACTION", {
+                "action": action_type,
+                "is_flying": self.is_flying,
+                "phase": self.flight_phase,
+                "altitude_m": round(self.altitude, 1),
+                "battery_pct": int(self.battery),
+            })
 
     def export_protocol(self):
         cfg = HAZARDS_DB[self.selected_hazard_key]
@@ -320,14 +402,65 @@ class OkoMchsOperatorApp(ctk.CTk):
             "recommended_response": "Направить 2 пожарные автоцистерны АЦ-40, оповестить диспетчера района."
         }
 
-        # Сохранение в текущую папку
-        report_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "incident_protocol.json")
+        reports_dir = REPO_ROOT / "reports"
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        report_path = reports_dir / f"incident_protocol_{inc_id}.json"
+        # Также обновим текущий incident_protocol.json для совместимости
+        fallback_path = Path(__file__).resolve().parent / "incident_protocol.json"
+
         try:
             with open(report_path, "w", encoding="utf-8") as f:
                 json.dump(report_data, f, ensure_ascii=False, indent=2)
-            self.log_event(f"✅ Протокол {inc_id} успешно сохранен: {os.path.basename(report_path)}")
+            with open(fallback_path, "w", encoding="utf-8") as f:
+                json.dump(report_data, f, ensure_ascii=False, indent=2)
+
+            self.log_event(f"✅ Протокол {inc_id} успешно сохранен: {report_path.name}")
+            if core_log_event:
+                core_log_event("GCS_UI", "OPERATOR_ACTION", {
+                    "action": "EXPORT_PROTOCOL",
+                    "incident_id": inc_id,
+                    "file": report_path.name,
+                    "hazard": cfg['title'],
+                    "threat": cfg['threat'],
+                    "status": "SUCCESS",
+                })
         except Exception as e:
-            self.log_event(f"Ошибка сохранения отчета: {e}")
+            self.log_event(f"Ошибка сохранения отчета: {e}", level="ERROR")
+            if core_log_event:
+                core_log_event("GCS_UI", "OPERATOR_ACTION", {
+                    "action": "EXPORT_PROTOCOL",
+                    "status": "ERROR",
+                    "error": str(e),
+                }, level="ERROR")
+
+    def build_diagnostic_bundle(self):
+        """Сборка полного диагностического пакета логов и отчетов инцидента."""
+        self.log_event("📦 Запуск экспресс-диагностики и сборки лог-пакета...")
+        try:
+            if create_diagnostic_bundle:
+                bundle_path = create_diagnostic_bundle()
+            else:
+                from scripts.diagnose_logs import create_diagnostic_bundle as cdb
+                bundle_path = cdb()
+            msg = f"✅ Диагностический бандл собран: {bundle_path.name}"
+            self.log_event(msg)
+            logger.info(f"Сформирован аварийный архив: {bundle_path}")
+            if core_log_event:
+                core_log_event("GCS_UI", "OPERATOR_ACTION", {
+                    "action": "BUILD_DIAGNOSTIC_BUNDLE",
+                    "status": "SUCCESS",
+                    "bundle_path": str(bundle_path),
+                    "bundle_name": bundle_path.name,
+                })
+        except Exception as e:
+            err_msg = f"❌ Ошибка формирования лог-бандла: {e}"
+            self.log_event(err_msg, level="ERROR")
+            if core_log_event:
+                core_log_event("GCS_UI", "OPERATOR_ACTION", {
+                    "action": "BUILD_DIAGNOSTIC_BUNDLE",
+                    "status": "ERROR",
+                    "error": str(e),
+                }, level="ERROR")
 
     def update_loop(self):
         self.frame_counter += 1
@@ -456,6 +589,9 @@ class OkoMchsOperatorApp(ctk.CTk):
 
     def poll_live_stream(self):
         """Опрос веб-потока камеры бортового компьютера БПЛА (порт 8080)."""
+        last_stream_state = None
+        consecutive_failures = 0
+
         while True:
             try:
                 req = urllib.request.Request("http://127.0.0.1:8080/snapshot.jpg", headers={'User-Agent': 'MchsOperatorApp'})
@@ -465,8 +601,31 @@ class OkoMchsOperatorApp(ctk.CTk):
                     if frame is not None:
                         self.live_stream_frame = frame
                         self.is_live_stream_active = True
-            except Exception:
+                        consecutive_failures = 0
+                        if last_stream_state is not True:
+                            last_stream_state = True
+                            logger.info("Установлена связь с веб-видеопотоком камеры :8080 (Gazebo/ROS2)")
+                            if core_log_event:
+                                core_log_event("GCS_UI", "OPERATOR_ACTION", {
+                                    "action": "STREAM_CONNECTED",
+                                    "status": "ONLINE",
+                                    "endpoint": "http://127.0.0.1:8080/snapshot.jpg"
+                                })
+            except Exception as e:
                 self.is_live_stream_active = False
+                consecutive_failures += 1
+                if last_stream_state is True:
+                    last_stream_state = False
+                    logger.warning(f"Потеряно соединение с видеостримером :8080: {e}")
+                    if core_log_event:
+                        core_log_event("GCS_UI", "OPERATOR_ACTION", {
+                            "action": "STREAM_DISCONNECTED",
+                            "status": "OFFLINE",
+                            "error": str(e),
+                        }, level="WARNING")
+                elif last_stream_state is None and consecutive_failures == 1:
+                    last_stream_state = False
+                    logger.info("Видеостример :8080 не обнаружен. Включен автономный тактический рендерер.")
             time.sleep(0.04)  # ~25 FPS опрос
 
     def draw_camera(self):

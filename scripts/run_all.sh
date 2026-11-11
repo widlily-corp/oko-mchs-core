@@ -16,7 +16,11 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 REPO_DIR=$(dirname "$SCRIPT_DIR")
 WORLD="$REPO_DIR/src/mchs_simulation/worlds/mchs_emergency_arena.world"
 LOG_DIR="${MCHS_LOG_DIR:-/tmp/mchs_demo}"
-mkdir -p "$LOG_DIR"
+STDOUT_LOG_DIR="$REPO_DIR/logs/stdout"
+mkdir -p "$LOG_DIR" "$STDOUT_LOG_DIR"
+> "$STDOUT_LOG_DIR/gazebo.log"
+> "$STDOUT_LOG_DIR/vision.log"
+> "$STDOUT_LOG_DIR/pilot.log"
 
 echo "=========================================================="
 echo "   ЗАПУСК КОМПЛЕКСА «ОКО МЧС» — АРЕНА 200×200 М            "
@@ -32,6 +36,7 @@ if ! command -v ros2 >/dev/null 2>&1; then
 fi
 
 export GAZEBO_MODEL_PATH="$REPO_DIR/src/mchs_simulation/models:/usr/share/gazebo-11/models:${GAZEBO_MODEL_PATH:-}"
+export PYTHONPATH="$REPO_DIR/src:${PYTHONPATH:-}"
 export LIBGL_ALWAYS_SOFTWARE=1
 export GALLIUM_DRIVER=llvmpipe
 export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
@@ -44,6 +49,7 @@ cleanup() {
         kill -9 "$pid" 2>/dev/null || true
     done
     pkill -9 -f "[m]chs_vision_node.py" 2>/dev/null || true
+    pkill -9 -f "[m]chs_pilot_node.py" 2>/dev/null || true
     pkill -9 -f "[m]chs_pilot_route.py" 2>/dev/null || true
     pkill -9 -x gzserver 2>/dev/null || true
     echo "[INFO] Готово."
@@ -55,7 +61,7 @@ gzserver --verbose "$WORLD" \
     -s libgazebo_ros_init.so \
     -s libgazebo_ros_factory.so \
     -s libgazebo_ros_state.so \
-    > "$LOG_DIR/gzserver.log" 2>&1 &
+    > >(tee -a "$STDOUT_LOG_DIR/gazebo.log") 2>&1 &
 PIDS+=($!)
 
 CAMERA_READY=0
@@ -69,7 +75,7 @@ done
 if [ "$CAMERA_READY" -eq 1 ]; then
     echo "       Камера БПЛА активна: /mchs/camera/image_raw"
 else
-    echo "       [ВНИМАНИЕ] Камера не поднялась за 45 c — см. $LOG_DIR/gzserver.log"
+    echo "       [ВНИМАНИЕ] Камера не поднялась за 45 c — см. $STDOUT_LOG_DIR/gazebo.log"
 fi
 
 echo "[2/3] Запуск бортовой ноды зрения (детекция + веб-стрим :8080)..."
@@ -78,12 +84,16 @@ python3 "$REPO_DIR/src/mchs_vision/scripts/mchs_vision_node.py" \
     -p enable_stream:=true \
     -p show_window:=false \
     -p stream_port:=8080 \
-    > "$LOG_DIR/vision.log" 2>&1 &
+    > >(tee -a "$STDOUT_LOG_DIR/vision.log") 2>&1 &
 PIDS+=($!)
 
 echo "[3/3] Запуск автопилота: БАЗА → ПОЖАР → НЕФТЕБАЗА → ЗАТОПЛЕНИЕ → СВАЛКА..."
-python3 "$REPO_DIR/src/mchs_control/scripts/mchs_pilot_route.py" \
-    > "$LOG_DIR/pilot.log" 2>&1 &
+PILOT_EXEC="${MCHS_PILOT_SCRIPT:-$REPO_DIR/src/mchs_control/scripts/mchs_pilot_route.py}"
+if [ ! -f "$PILOT_EXEC" ]; then
+    PILOT_EXEC="$REPO_DIR/src/mchs_control/scripts/mchs_pilot_node.py"
+fi
+python3 "$PILOT_EXEC" \
+    > >(tee -a "$STDOUT_LOG_DIR/pilot.log") 2>&1 &
 PIDS+=($!)
 
 sleep 2
@@ -104,7 +114,8 @@ cat <<EOF
     Маршрут дрона:            база → пожар → нефтебаза → затопление → свалка
     Переместить очаг:         python3 src/mchs_simulation/scripts/arena_controller.py --hazard fire --x 10 --y 5
 
-    Логи: $LOG_DIR/
+    Логи процессов:           $STDOUT_LOG_DIR/ (gazebo.log, vision.log, pilot.log)
+    Бортовой журнал и ядро:   $REPO_DIR/logs/ (system.log, events.jsonl, telemetry_blackbox.csv)
     Остановка: Ctrl+C в этом окне.
 ==========================================================
 EOF

@@ -63,6 +63,39 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:  # импорт работает при запуске из любой папки
     sys.path.insert(0, SCRIPT_DIR)
 
+REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
+SRC_DIR = os.path.join(REPO_ROOT, "src")
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+try:
+    from mchs_core import (
+        BlackBoxRecorder,
+        TelemetryRecord,
+        get_logger,
+        install_crash_handler,
+        log_event,
+    )
+except ImportError:
+    BlackBoxRecorder = None  # type: ignore[assignment,misc]
+    TelemetryRecord = None  # type: ignore[assignment,misc]
+    get_logger = None  # type: ignore[assignment,misc]
+    install_crash_handler = None  # type: ignore[assignment,misc]
+    log_event = None  # type: ignore[assignment,misc]
+
+if install_crash_handler is not None:
+    install_crash_handler("PILOT")
+
+
+def _create_blackbox(subsystem: str = "PILOT") -> Optional[BlackBoxRecorder]:
+    """Безопасная фабрика бортового самописца BlackBoxRecorder."""
+    if BlackBoxRecorder is None:
+        return None
+    try:
+        return BlackBoxRecorder(subsystem=subsystem)  # type: ignore[call-arg]
+    except TypeError:
+        return BlackBoxRecorder()
+
 from generate_report import (  # noqa: E402
     DEFAULT_OUTPUT_DIR,
     classify_threat,
@@ -658,6 +691,11 @@ def _print_route(planner: FlightPlanner) -> None:
 
 def run_dry_run(args: argparse.Namespace) -> int:
     """Прогоняет FSM в виртуальном времени без ROS 2 и Gazebo."""
+    if install_crash_handler is not None:
+        install_crash_handler("PILOT")
+    logger = get_logger("mchs_pilot", subsystem="PILOT") if get_logger is not None else None
+    blackbox = _create_blackbox("PILOT")
+
     planner = FlightPlanner(
         takeoff_altitude=args.takeoff_altitude,
         cruise_speed=args.cruise_speed,
@@ -682,23 +720,90 @@ def run_dry_run(args: argparse.Namespace) -> int:
     protocol_saved = False
 
     print("=== ПРОГОН МИССИИ (виртуальное время) ===")
+    if logger:
+        logger.info("Запуск автономного автопилота «Око МЧС» в режиме dry-run")
+
     while not planner.is_finished and planner.elapsed < args.duration:
         detection = None
         if detection_pending and planner.elapsed >= args.detect_at:
             detection = simulated
             detection_pending = False
-            print(
+            msg_detect = (
                 f"[{planner.elapsed:6.1f} с] ЗРЕНИЕ: событие /mchs/detection_event "
                 f"{simulated.hazard_type}/{simulated.threat_level}, {simulated.area_sq_m:.1f} м²"
             )
+            print(msg_detect)
+            if logger:
+                logger.warning(msg_detect)
+            if log_event is not None:
+                log_event("PILOT", "DETECTION_RECEIVED", {
+                    "hazard_type": simulated.hazard_type,
+                    "threat_level": simulated.threat_level,
+                    "area_sq_m": simulated.area_sq_m,
+                    "confidence": simulated.confidence,
+                }, level="WARNING" if simulated.is_alarm else "INFO")
 
+        prev_phase = planner.phase
         command, events = planner.tick(dt, detection=detection)
 
+        if planner.phase != prev_phase:
+            trans_text = f"FSM переход: {prev_phase.value} ({prev_phase.label}) -> {planner.phase.value} ({planner.phase.label})"
+            if logger:
+                logger.info(trans_text)
+            if log_event is not None:
+                log_event("PILOT", "FSM_TRANSITION", {
+                    "from_state": prev_phase.value,
+                    "to_state": planner.phase.value,
+                    "label": planner.phase.label,
+                    "elapsed_s": round(planner.elapsed, 2),
+                })
+            if blackbox:
+                blackbox.record_event(
+                    "FSM_TRANSITION",
+                    f"{prev_phase.value}->{planner.phase.value}",
+                    state=planner.phase.value,
+                    x=planner.x,
+                    y=planner.y,
+                    z=planner.z,
+                    battery_pct=planner.battery_pct,
+                )
+
         for event in events:
-            print(f"[{planner.elapsed:6.1f} с] {EVENT_TEXT.get(event, event)}")
+            event_line = f"[{planner.elapsed:6.1f} с] {EVENT_TEXT.get(event, event)}"
+            print(event_line)
+            if logger:
+                logger.info(event_line)
             if event == "inspection_started" and not args.no_report and not protocol_saved:
                 _save_protocol(planner, args)
                 protocol_saved = True
+                if logger:
+                    logger.info("Сформирован протокол ЦУКС инспекции очага")
+                if log_event is not None:
+                    log_event("PILOT", "PROTOCOL_EXPORTED", {
+                        "hazard": args.hazard,
+                        "threat": args.threat,
+                        "area": args.area,
+                    })
+
+        import time
+        now_epoch = time.time()
+        if blackbox:
+            cur_alert = bool(planner.active_detection and planner.active_detection.is_alarm)
+            seg = planner.current_segment
+            blackbox.record_telemetry(
+                epoch_s=now_epoch,
+                x=planner.x,
+                y=planner.y,
+                z=planner.z,
+                yaw_deg=math.degrees(planner.heading_rad),
+                vx=command.vx,
+                vy=command.vy,
+                vz=command.vz,
+                battery_pct=planner.battery_pct,
+                state=planner.phase.value,
+                hazard_alert=cur_alert,
+                message=seg.title if seg else planner.phase.label,
+            )
 
         current_second = int(planner.elapsed)
         if current_second != last_second:
@@ -709,6 +814,12 @@ def run_dry_run(args: argparse.Namespace) -> int:
                 f"[{planner.elapsed:6.1f} с] {planner.phase.label:<10} | {title:<42} | "
                 f"{command} | Z={planner.z:4.1f} м | АКБ={planner.battery_pct:5.1f}%"
             )
+
+    if blackbox:
+        try:
+            blackbox.close()
+        except Exception:
+            pass
 
     print()
     if planner.is_finished:
@@ -791,6 +902,11 @@ def run_ros(args: argparse.Namespace) -> int:
         def __init__(self) -> None:
             super().__init__("mchs_drone_pilot")
 
+            if install_crash_handler is not None:
+                install_crash_handler("PILOT")
+            self.logger = get_logger("mchs_pilot", subsystem="PILOT") if get_logger is not None else self.get_logger()
+            self.blackbox = _create_blackbox("PILOT")
+
             self.declare_parameter("takeoff_altitude", float(args.takeoff_altitude))
             self.declare_parameter("cruise_speed", float(args.cruise_speed))
             self.declare_parameter("lanes", int(args.lanes))
@@ -819,6 +935,12 @@ def run_ros(args: argparse.Namespace) -> int:
             self.last_second_logged = -1
             self.odom_altitude: Optional[float] = None
             self.odom_position: Optional[tuple[float, float]] = None
+            self.odom_yaw_deg: Optional[float] = None
+            self.odom_vx: float = 0.0
+            self.odom_vy: float = 0.0
+            self.odom_vz: float = 0.0
+            self.last_command: Command = Command()
+            self.prev_phase: Phase = self.planner.phase
             self.pending_detection: Optional[Detection] = None
             self.protocol: Optional[dict] = None
 
@@ -826,11 +948,14 @@ def run_ros(args: argparse.Namespace) -> int:
             self.create_timer(1.0 / rate, self.on_tick)
             self.create_timer(1.0, self.publish_status)
 
-            self.get_logger().info(">>> Автопилот МЧС запущен: TAKEOFF -> PATROL_GRID -> HOVER_INSPECTION -> RTL -> LAND")
-            self.get_logger().info(
-                f"    высота {self.planner.takeoff_altitude:.1f} м, скорость {self.planner.cruise_speed:.1f} м/с, "
-                f"топик тревог {args.detection_topic}"
+            startup_msg = (
+                f">>> Автопилот МЧС запущен: TAKEOFF -> PATROL_GRID -> HOVER_INSPECTION -> RTL -> LAND "
+                f"(высота {self.planner.takeoff_altitude:.1f} м, скорость {self.planner.cruise_speed:.1f} м/с, "
+                f"топик тревог {args.detection_topic})"
             )
+            self.get_logger().info(startup_msg)
+            if self.logger:
+                self.logger.info(startup_msg)
 
         def _param(self, name: str):
             """Значение параметра ROS по имени."""
@@ -847,31 +972,75 @@ def run_ros(args: argparse.Namespace) -> int:
             detection = Detection.from_payload(msg.data)
             if detection is None:
                 self.get_logger().warn(f"Непонятное событие ЧС: {msg.data!r}")
+                if self.logger:
+                    self.logger.warning(f"Непонятное событие ЧС: {msg.data!r}")
                 return
             self.pending_detection = detection
             incident = f", инцидент {detection.incident_id}" if detection.incident_id else ""
-            self.get_logger().warn(
-                f"!!! {detection.hazard_type}/{detection.threat_level} "
+            alert_text = (
+                f"Получено сообщение /mchs/detection_event: {detection.hazard_type}/{detection.threat_level} "
                 f"({detection.area_sq_m:.1f} м², уверенность {detection.confidence:.2f}{incident})"
             )
+            self.get_logger().warn(f"!!! {detection.hazard_type}/{detection.threat_level} ({detection.area_sq_m:.1f} м², уверенность {detection.confidence:.2f}{incident})")
+            if self.logger:
+                self.logger.warning(alert_text)
+            if log_event is not None:
+                log_event("PILOT", "DETECTION_RECEIVED", {
+                    "hazard_type": detection.hazard_type,
+                    "threat_level": detection.threat_level,
+                    "area_sq_m": detection.area_sq_m,
+                    "confidence": detection.confidence,
+                    "incident_id": detection.incident_id,
+                    "target_geo": detection.target_geo,
+                }, level="WARNING" if detection.is_alarm else "INFO")
+            if self.blackbox:
+                self.blackbox.record_event(
+                    "DETECTION_RECEIVED",
+                    f"{detection.hazard_type} {detection.threat_level}",
+                    state=self.planner.phase.value,
+                    hazard_alert=detection.is_alarm,
+                    x=self.planner.x if self.odom_position is None else self.odom_position[0],
+                    y=self.planner.y if self.odom_position is None else self.odom_position[1],
+                    z=self._altitude(),
+                    battery_pct=self.planner.battery_pct,
+                )
 
         def on_odom(self, msg: Odometry) -> None:
-            """Запоминает фактическую высоту и позицию из Gazebo."""
+            """Запоминает фактическую высоту, позицию, скорости и курс из Gazebo."""
             position = msg.pose.pose.position
             self.odom_altitude = float(position.z)
             self.odom_position = (float(position.x), float(position.y))
 
+            twist = msg.twist.twist
+            self.odom_vx = float(twist.linear.x)
+            self.odom_vy = float(twist.linear.y)
+            self.odom_vz = float(twist.linear.z)
+
+            ori = msg.pose.pose.orientation
+            siny = 2.0 * (ori.w * ori.z + ori.x * ori.y)
+            cosy = 1.0 - 2.0 * (ori.y * ori.y + ori.z * ori.z)
+            self.odom_yaw_deg = math.degrees(math.atan2(siny, cosy))
+
         def on_command(self, msg: String) -> None:
             """Команды оператора: RTL (возврат) и LAND (посадка на месте)."""
             command = msg.data.strip().upper()
+            if self.logger:
+                self.logger.info(f"Получена команда оператора /mchs/mission_command: {command}")
+            if log_event is not None:
+                log_event("PILOT", "OPERATOR_COMMAND", {"command": command})
+
             if command in ("RTL", "RETURN", "ABORT"):
                 if self.planner.request_rtl():
                     self.get_logger().warn("!!! Команда оператора: возврат на базу (RTL).")
+                    if self.logger:
+                        self.logger.warning("Команда оператора: возврат на базу (RTL).")
                 else:
                     self.get_logger().info("Команда RTL не требуется: дрон уже садится/сел.")
             elif command in ("LAND", "STOP"):
                 if self.planner.request_land():
                     self.get_logger().warn("!!! Команда оператора: посадка на месте.")
+                    if self.logger:
+                        self.logger.warning("Команда оператора: посадка на месте.")
                 else:
                     self.get_logger().info("Команда LAND не требуется: миссия уже завершена.")
             else:
@@ -889,11 +1058,64 @@ def run_ros(args: argparse.Namespace) -> int:
             self.last_tick_time = now
 
             detection, self.pending_detection = self.pending_detection, None
+            prev_phase = self.planner.phase
             command, events = self.planner.tick(dt, detection=detection)
             self._publish_command(command)
 
+            if self.planner.phase != prev_phase:
+                trans_msg = f"FSM переход: {prev_phase.value} ({prev_phase.label}) -> {self.planner.phase.value} ({self.planner.phase.label})"
+                self.get_logger().info(f">>> {trans_msg}")
+                if self.logger:
+                    self.logger.info(trans_msg)
+                if log_event is not None:
+                    log_event("PILOT", "FSM_TRANSITION", {
+                        "from_state": prev_phase.value,
+                        "to_state": self.planner.phase.value,
+                        "label": self.planner.phase.label,
+                        "elapsed_s": round(self.planner.elapsed, 2),
+                    })
+                if self.blackbox:
+                    self.blackbox.record_event(
+                        "FSM_TRANSITION",
+                        f"{prev_phase.value}->{self.planner.phase.value}",
+                        state=self.planner.phase.value,
+                        x=self.planner.x if self.odom_position is None else self.odom_position[0],
+                        y=self.planner.y if self.odom_position is None else self.odom_position[1],
+                        z=self._altitude(),
+                        battery_pct=self.planner.battery_pct,
+                    )
+                self.prev_phase = self.planner.phase
+
             for event in events:
                 self._handle_event(event)
+
+            if self.blackbox:
+                import time
+                cur_x = self.odom_position[0] if self.odom_position is not None else self.planner.x
+                cur_y = self.odom_position[1] if self.odom_position is not None else self.planner.y
+                cur_z = self._altitude()
+                cur_yaw = self.odom_yaw_deg if self.odom_yaw_deg is not None else math.degrees(self.planner.heading_rad)
+                cur_vx = self.odom_vx if self.odom_position is not None else command.vx
+                cur_vy = self.odom_vy if self.odom_position is not None else command.vy
+                cur_vz = self.odom_vz if self.odom_altitude is not None else command.vz
+                cur_alert = bool(self.planner.active_detection and self.planner.active_detection.is_alarm)
+                seg = self.planner.current_segment
+                msg_desc = seg.title if seg else self.planner.phase.label
+
+                self.blackbox.record_telemetry(
+                    epoch_s=time.time(),
+                    x=cur_x,
+                    y=cur_y,
+                    z=cur_z,
+                    yaw_deg=cur_yaw,
+                    vx=cur_vx,
+                    vy=cur_vy,
+                    vz=cur_vz,
+                    battery_pct=self.planner.battery_pct,
+                    state=self.planner.phase.value,
+                    hazard_alert=cur_alert,
+                    message=msg_desc,
+                )
 
             second = int(self.planner.elapsed)
             if second != self.last_second_logged:
@@ -909,11 +1131,24 @@ def run_ros(args: argparse.Namespace) -> int:
             message.angular.z = float(command.wz)
             self.publisher.publish(message)
 
+            if self.logger:
+                self.logger.debug(f"/mchs/cmd_vel: vx={command.vx:+.2f}, vy={command.vy:+.2f}, vz={command.vz:+.2f}, wz={command.wz:+.2f}")
+                if (abs(command.vx - self.last_command.vx) > 0.05 or
+                    abs(command.vy - self.last_command.vy) > 0.05 or
+                    abs(command.vz - self.last_command.vz) > 0.05 or
+                    abs(command.wz - self.last_command.wz) > 0.05):
+                    self.last_command = Command(command.vx, command.vy, command.vz, command.wz)
+                    self.logger.info(f"Команда /mchs/cmd_vel: vx={command.vx:+.2f}, vy={command.vy:+.2f}, vz={command.vz:+.2f}, wz={command.wz:+.2f}")
+
         def _handle_event(self, event: str) -> None:
             """Логирует события FSM и формирует протокол при инспекции."""
             text = EVENT_TEXT.get(event)
             if text:
                 self.get_logger().info(text)
+                if self.logger:
+                    self.logger.info(f"Событие FSM: {event} ({text})")
+            if log_event is not None:
+                log_event("PILOT", "FSM_EVENT", {"event": event, "description": text or ""})
             if event == "inspection_started":
                 self._build_protocol()
 
@@ -949,6 +1184,15 @@ def run_ros(args: argparse.Namespace) -> int:
             archive = self.protocol.get("archive") or {}
             self.get_logger().info(f">>> Протокол ЦУКС (JSON): {archive.get('json')}")
             self.get_logger().info(f">>> Бланк дежурного (TXT): {archive.get('txt')}")
+            if self.logger:
+                self.logger.info(f"Экспорт протокола ЦУКС: JSON={archive.get('json')}, TXT={archive.get('txt')}")
+            if log_event is not None:
+                log_event("PILOT", "PROTOCOL_EXPORTED", {
+                    "incident_id": detection.incident_id if detection else None,
+                    "hazard_type": detection.hazard_type if detection else None,
+                    "threat_level": detection.threat_level if detection else None,
+                    "archive": archive,
+                })
 
         # -- телеметрия ----------------------------------------------------
 
@@ -960,10 +1204,13 @@ def run_ros(args: argparse.Namespace) -> int:
             """Пишет строку телеметрии раз в секунду."""
             segment = self.planner.current_segment
             title = segment.title if segment else "—"
-            self.get_logger().info(
+            msg_str = (
                 f"[{self.planner.elapsed:5.1f} с] {self.planner.phase.label:<10} | {title:<40} | "
                 f"Z={self._altitude():4.1f} м | АКБ={self.planner.battery_pct:5.1f}%"
             )
+            self.get_logger().info(msg_str)
+            if self.logger:
+                self.logger.debug(msg_str)
 
         def publish_status(self) -> None:
             """Публикует JSON-статус миссии для АРМ оператора."""
@@ -983,6 +1230,18 @@ def run_ros(args: argparse.Namespace) -> int:
             message = String()
             message.data = json.dumps(status, ensure_ascii=False)
             self.status_publisher.publish(message)
+
+        def destroy_node(self) -> bool:
+            """Корректное завершение работы ноды и закрытие бортового самописца."""
+            if self.blackbox:
+                try:
+                    self.blackbox.close()
+                except Exception:
+                    pass
+                self.blackbox = None
+            if self.logger:
+                self.logger.info("Бортовой самописец PILOT закрыт. Нода mchs_pilot остановлена.")
+            return super().destroy_node()
 
     rclpy.init()
     node = MchsPilotNode()
