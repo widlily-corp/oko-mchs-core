@@ -41,10 +41,10 @@
         <visual name="visual_flame">
           <pose>0 0 0.8 0 0 0</pose>
           <geometry>
-            <cone>
+            <cylinder>
               <radius>1.2</radius>
               <length>1.6</length>
-            </cone>
+            </cylinder>
           </geometry>
           <material>
             <ambient>1.0 0.6 0.0 1.0</ambient>
