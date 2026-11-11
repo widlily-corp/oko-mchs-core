@@ -1,27 +1,24 @@
 @echo off
-chcp 65001 >nul
 pushd "%~dp0"
 echo ========================================================
-echo       КОМПЛЕКС «ОКО МЧС» — ЕДИНЫЙ ЗАПУСК СИСТЕМЫ
+echo       KOMPLEKS OKO MCHS: UNIFIED SYSTEM LAUNCH
 echo ========================================================
-echo 1. Очистка старых процессов...
+echo [1/4] Stopping stale processes...
 wsl.exe -d Ubuntu-22.04 bash -c "killall -9 gazebo gzserver gzclient python3 2>/dev/null || true"
 
-echo 2. Запуск симуляции, зрения и автопилота в WSL...
-start "ОКО МЧС - СИМУЛЯЦИЯ И АВТОПИЛОТ (WSL)" wsl.exe -d Ubuntu-22.04 bash -c "bash /root/oko-mchs-core/scripts/run_all.sh"
+echo [2/4] Starting Gazebo, Vision and Pilot in WSL...
+start "OKO MCHS - SIMULATION & AUTOPILOT (WSL)" wsl.exe -d Ubuntu-22.04 bash -c "bash /root/oko-mchs-core/scripts/run_all.sh"
 
-echo 3. Ожидание инициализации узлов (5 сек)...
+echo [3/4] Waiting 5 seconds for nodes initialization...
 timeout /t 5 /nobreak >nul
 
-echo 4. Запуск АРМ Оператора ЦУКС на Windows...
-start "ОКО МЧС - АРМ ОПЕРАТОРА" python src\mchs_ui\app.py
+echo [4/4] Starting Operator Station on Windows...
+start "OKO MCHS - OPERATOR UI" python "%~dp0src\mchs_ui\app.py"
 
 echo ========================================================
-echo >>> КОМПЛЕКС ЗАПУЩЕН!
-echo - 3D-Арена Gazebo: запущена в WSLg (1024x768)
-echo - Нода зрения: анализирует 4 типа ЧС + веб-эфир :8080
-echo - Автопилот: FSM патрулирование, зависание и протокол
-echo - АРМ Оператора МЧС: активен на Windows
-echo - Веб-эфир камеры БПЛА: http://localhost:8080
+echo ALL SYSTEMS ACTIVE!
+echo - Gazebo 3D Arena: running in WSLg
+echo - Operator UI: running on Windows
+echo - Drone Live Camera Stream: http://localhost:8080
 echo ========================================================
 popd
