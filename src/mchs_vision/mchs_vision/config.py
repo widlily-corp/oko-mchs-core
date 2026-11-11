@@ -64,6 +64,8 @@ class HazardClassSpec:
             а не 10–20 м².
         max_aspect_ratio: максимальное отношение сторон bbox. Для человека
             дополнительно отсекает длинные оранжевые полосы/борта техники.
+        merge_gap_px: индивидуальный зазор склейки пятен класса. Для человека
+            больше, чтобы жилет, каска и полоса не распадались на треки.
         description: пояснение для документации.
     """
 
@@ -86,6 +88,7 @@ class HazardClassSpec:
     min_area_m2: float = 0.0
     max_area_m2: float = 1_000_000.0
     max_aspect_ratio: float = 10.0
+    merge_gap_px: int = 0
     description: str = ""
 
 

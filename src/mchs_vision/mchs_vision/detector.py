@@ -365,12 +365,13 @@ class HazardDetector:
         if len(candidates) <= 1:
             return candidates
 
+        merge_gap = max(self.config.merge_gap_px, spec.merge_gap_px)
         groups: List[List[Dict]] = []
         for cand in candidates:
             placed = False
             for group in groups:
                 if any(_bbox_gap(cand["bbox"], other["bbox"])
-                       <= self.config.merge_gap_px for other in group):
+                       <= merge_gap for other in group):
                     group.append(cand)
                     placed = True
                     break
@@ -387,7 +388,8 @@ class HazardDetector:
             for cand in group:
                 cv2.drawContours(union, [cand["contour"]], -1, 255, -1)
 
-            union = cv2.morphologyEx(union, cv2.MORPH_CLOSE, _kernel(5))
+            union = cv2.morphologyEx(union, cv2.MORPH_CLOSE,
+                                     _kernel(max(5, merge_gap)))
             contours, _ = cv2.findContours(
                 union, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
             )
