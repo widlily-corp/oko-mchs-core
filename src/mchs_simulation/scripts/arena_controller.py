@@ -7,9 +7,10 @@
 import sys
 import os
 import argparse
+import json
+import math
 import random
 import subprocess
-import json
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
@@ -51,6 +52,12 @@ HAZARD_MODELS = {
         'label': 'Токсичные отходы / бочки'
     }
 }
+
+# Рандомизация по всей арене 200×200 м (для стресс-теста жюри).
+RANDOM_ARENA_LIMIT_M = 85.0        # x, y ∈ [-85, 85] м
+RANDOM_MIN_HAZARD_SPACING_M = 30.0  # минимум 30 м между очагами
+RANDOM_MIN_BASE_DISTANCE_M = 20.0   # не ближе 20 м к базе (0, 0)
+
 
 def is_gazebo_running() -> bool:
     """Проверяет, запущен ли реальный процесс gzserver / gazebo."""
@@ -239,7 +246,7 @@ def move_hazard(hazard_key: str, x: float, y: float, z: float = None) -> bool:
     return success
 
 def randomize_arena():
-    """Случайное распределение 4 очагов ЧС в зоне патрулирования (для стресс-теста жюри)."""
+    """Случайное распределение 4 очагов ЧС по всей арене 200×200 м (стресс-тест жюри)."""
     if not is_gazebo_running():
         err_msg = "Gazebo не запущен. Невозможно перетасовать объекты."
         print(f"[ARENA CONTROLLER] ❌ Ошибка: {err_msg}")
@@ -258,21 +265,28 @@ def randomize_arena():
     used_positions = []
 
     for key, cfg in HAZARD_MODELS.items():
-        while True:
-            # Сектор поиска: X от +6 до +20 м (впереди от базы), Y от -14 до +14 м
-            rx = round(random.uniform(7.0, 19.0), 1)
-            ry = round(random.uniform(-13.0, 13.0), 1)
+        placed = False
+        # До 500 попыток: арена большая, ограничения по расстояниям мягкие.
+        for _ in range(500):
+            rx = round(random.uniform(-RANDOM_ARENA_LIMIT_M, RANDOM_ARENA_LIMIT_M), 1)
+            ry = round(random.uniform(-RANDOM_ARENA_LIMIT_M, RANDOM_ARENA_LIMIT_M), 1)
 
-            too_close = False
-            for ux, uy in used_positions:
-                dist = ((rx - ux)**2 + (ry - uy)**2)**0.5
-                if dist < 5.0:
-                    too_close = True
-                    break
-            if not too_close:
-                used_positions.append((rx, ry))
-                move_hazard(key, rx, ry)
-                break
+            if math.hypot(rx, ry) < RANDOM_MIN_BASE_DISTANCE_M:
+                continue  # не ближе 20 м к базе (0, 0)
+            if any(
+                math.hypot(rx - ux, ry - uy) < RANDOM_MIN_HAZARD_SPACING_M
+                for ux, uy in used_positions
+            ):
+                continue  # не ближе 30 м между очагами
+            used_positions.append((rx, ry))
+            move_hazard(key, rx, ry)
+            placed = True
+            break
+        if not placed:
+            msg = f"Не удалось подобрать позицию для очага {cfg['name']} за 500 попыток"
+            print(f"[ARENA CONTROLLER] ⚠️ {msg}")
+            if logger:
+                logger.warning(msg)
 
 def print_hazard_list():
     print("\n=== СПИСОК ДОСТУПНЫХ ОБЪЕКТОВ ЧС НА АРЕНЕ ===")

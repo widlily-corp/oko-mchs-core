@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -69,6 +70,15 @@ class _StreamHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
+        elif self.path == "/state.json":
+            payload = json.dumps(self.streamer.state_snapshot(),
+                                 ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(payload)
         elif self.path == "/stream":
             self._stream_mjpeg()
         else:
@@ -107,6 +117,7 @@ class LatestFrameStreamer:
         self.running = True
         self._frame: Optional[bytes] = None
         self._lock = threading.Lock()
+        self._state: dict = {}
 
         handler = type("BoundStreamHandler", (_StreamHandler,),
                        {"streamer": self})
@@ -131,6 +142,18 @@ class LatestFrameStreamer:
     def snapshot(self) -> Optional[bytes]:
         with self._lock:
             return self._frame
+
+    def set_state(self, state: dict) -> None:
+        """Обновить телеметрию для АРМ (позиция БПЛА, скан, детекции)."""
+        if not isinstance(state, dict):
+            return
+        with self._lock:
+            self._state = state
+
+    def state_snapshot(self) -> dict:
+        """Копия последней телеметрии (thread-safe)."""
+        with self._lock:
+            return dict(self._state)
 
     def stop(self) -> None:
         self.running = False

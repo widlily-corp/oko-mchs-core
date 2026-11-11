@@ -4,7 +4,7 @@
 #
 #  WSL: gzserver (арена + камера + ROS 2 плагины)
 #       → нода зрения: аннотированный кадр + HTTP-стрим :8080
-#       → маршрутный автопилот: облёт 4 очагов ЧС / возврат на базу
+#       → автопилот-сканер: змейка по всей арене 200×200 / возврат на базу
 #  Windows: АРМ оператора (src/mchs_ui/app.py) забирает поток с :8080
 #
 #  Остановка: Ctrl+C.  Логи: /tmp/mchs_demo/
@@ -18,6 +18,14 @@ WORLD="$REPO_DIR/src/mchs_simulation/worlds/mchs_emergency_arena.world"
 LOG_DIR="${MCHS_LOG_DIR:-/tmp/mchs_demo}"
 STDOUT_LOG_DIR="$REPO_DIR/logs/stdout"
 mkdir -p "$LOG_DIR" "$STDOUT_LOG_DIR"
+
+# Чистое демо: убираем артефакты прошлых запусков, чтобы АРМ не подхватил
+# старый протокол/команду и не показал ложную тревогу при старте.
+rm -f "$REPO_DIR/reports/incident_protocol.json" \
+      "$REPO_DIR/reports/incident_protocol.json.tmp" \
+      "$REPO_DIR/reports/mission.cmd"
+mkdir -p "$REPO_DIR/reports/incidents" "$REPO_DIR/reports/photos" "$REPO_DIR/reports/video"
+
 > "$STDOUT_LOG_DIR/gazebo.log"
 > "$STDOUT_LOG_DIR/vision.log"
 > "$STDOUT_LOG_DIR/pilot.log"
@@ -56,11 +64,18 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+echo "[0/3] Генерация мира арены: очаги из config/hazards.json..."
+GEN_WORLD="$REPO_DIR/src/mchs_simulation/scripts/generate_arena_world.py"
+if python3 "$GEN_WORLD"; then
+    echo "       Мир обновлён, очаги из config/hazards.json"
+else
+    echo "       [ВНИМАНИЕ] Мир не перегенерирован — использую существующий $WORLD"
+fi
+
 echo "[1/3] Запуск Gazebo 11: большая арена, дрон, камера, ROS 2 плагины..."
 gzserver --verbose "$WORLD" \
     -s libgazebo_ros_init.so \
     -s libgazebo_ros_factory.so \
-    -s libgazebo_ros_state.so \
     > >(tee -a "$STDOUT_LOG_DIR/gazebo.log") 2>&1 &
 PIDS+=($!)
 
@@ -87,7 +102,7 @@ python3 "$REPO_DIR/src/mchs_vision/scripts/mchs_vision_node.py" \
     > >(tee -a "$STDOUT_LOG_DIR/vision.log") 2>&1 &
 PIDS+=($!)
 
-echo "[3/3] Запуск автопилота: БАЗА → ПОЖАР → НЕФТЕБАЗА → ЗАТОПЛЕНИЕ → СВАЛКА..."
+echo "[3/3] Запуск автопилота-сканера: змейка по всей арене (план — config/mission.json)..."
 PILOT_EXEC="${MCHS_PILOT_SCRIPT:-$REPO_DIR/src/mchs_control/scripts/mchs_pilot_route.py}"
 if [ ! -f "$PILOT_EXEC" ]; then
     PILOT_EXEC="$REPO_DIR/src/mchs_control/scripts/mchs_pilot_node.py"
@@ -109,13 +124,18 @@ fi
 cat <<EOF
 ==========================================================
 >>> ДЕМОНСТРАЦИЯ АКТИВНА — АРЕНА 200×200 М
-    АРМ оператора (Windows):  живая камера БПЛА + детекция ЧС
+    Сканирование:             вся арена змейкой (ряды/шаг — config/mission.json)
+    АРМ оператора (Windows):  живая камера БПЛА + детекция ЧС + карта очагов
     Веб-стрим:                http://localhost:8080
-    Маршрут дрона:            база → пожар → нефтебаза → затопление → свалка
-    Переместить очаг:         python3 src/mchs_simulation/scripts/arena_controller.py --hazard fire --x 10 --y 5
-
-    Логи процессов:           $STDOUT_LOG_DIR/ (gazebo.log, vision.log, pilot.log)
-    Бортовой журнал и ядро:   $REPO_DIR/logs/ (system.log, events.jsonl, telemetry_blackbox.csv)
+    Очаги ЧС:                 перетащите очаг прямо на карте АРМ — координаты
+                              сохранятся в config/hazards.json и применятся в Gazebo
+    Отчёты:                   reports/incidents (фото очагов с борта),
+                              reports/photos (снимки оператора),
+                              reports/video (запись видео),
+                              reports/incident_protocol.json (протокол ЦУКС)
+    Переместить очаг вручную: python3 src/mchs_simulation/scripts/arena_controller.py --hazard fire --x 10 --y 5
+    Логи:                     logs/system.log, logs/events.jsonl, logs/gcs_ui.log,
+                              logs/stdout/ (gazebo.log, vision.log, pilot.log)
     Остановка: Ctrl+C в этом окне.
 ==========================================================
 EOF

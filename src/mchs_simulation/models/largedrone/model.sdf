@@ -73,6 +73,10 @@
           <frame_name>camera_optical_link</frame_name>
         </plugin>
       </sensor>
+
+      <!-- Кинематический плагин planar_move не удерживает высоту: отключаем
+           гравитацию у звена, иначе дрон падает (odom z ~0.00015). -->
+      <gravity>false</gravity>
     </link>
 
     <!-- Кинематическое движение по /mchs/cmd_vel и одометрия в /mchs/odom. -->

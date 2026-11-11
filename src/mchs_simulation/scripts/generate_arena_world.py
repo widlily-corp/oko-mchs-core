@@ -11,14 +11,53 @@
   • полигон ТБО / несанкционированная свалка;
   • посёлок, склады, поля, холмы, кустарник.
 
+Координаты 4 очагов ЧС берутся из config/hazards.json (fallback — демо-значения).
+Гравитация мира отключена: кинематический дрон держит высоту 22 м.
+
 Запуск:  python3 generate_arena_world.py
 Результат: worlds/mchs_emergency_arena.world
 """
+import json
 import math
 import os
+import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WORLD_PATH = os.path.join(HERE, "..", "worlds", "mchs_emergency_arena.world")
+CONFIG_PATH = os.path.join(HERE, "..", "..", "..", "config", "hazards.json")
+
+# Координаты очагов по умолчанию (совпадают с config/hazards.json).
+DEFAULT_HAZARD_POSES = {
+    "FIRE": (60.0, 28.0, 0.2),
+    "OIL": (-58.0, 30.0, 0.02),
+    "FLOOD": (45.0, -56.0, 0.02),
+    "WASTE": (68.0, -72.0, 0.4),
+}
+
+
+def load_hazard_poses():
+    """Читает координаты очагов из config/hazards.json с fallback-значениями."""
+    poses = dict(DEFAULT_HAZARD_POSES)
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return poses
+    if not isinstance(data, dict):
+        return poses
+    for key in poses:
+        item = data.get(key)
+        if not isinstance(item, dict):
+            continue
+        try:
+            x = float(item["x"])
+            y = float(item["y"])
+            z = float(item.get("z", poses[key][2]))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if math.isfinite(x) and math.isfinite(y) and math.isfinite(z):
+            poses[key] = (x, y, z)
+    return poses
 
 # --------------------------------------------------------------------- утилиты
 
@@ -189,6 +228,7 @@ def add_dashes(model, x, y, length, width, rot, count=12):
 def build_world():
     parts = []
     add = parts.append
+    hazard_poses = load_hazard_poses()
 
     add('<?xml version="1.0" ?>\n')
     add('<sdf version="1.6">\n')
@@ -207,6 +247,9 @@ def build_world():
 
     # Физика
     add('''    <physics type="ode">
+      <!-- Высоту 22 м держит <gravity>false</gravity> в модели дрона;
+           глобальную гравитацию арены не трогаем (Gazebo 11.10 не умеет
+           применять <gravity>0 0 0</gravity> и пишет ошибку any_cast). -->
       <max_step_size>0.002</max_step_size>
       <real_time_factor>1.0</real_time_factor>
       <real_time_update_rate>500</real_time_update_rate>
@@ -263,7 +306,7 @@ def build_world():
 
     # --- Река и мост --------------------------------------------------------
     river = Model("river")
-    river.visual(box(240, 16, 0.06), (0, -62, 0.018, 0, 0, 0.06), (0.07, 0.28, 0.55),
+    river.visual(box(240, 16, 0.06), (0, -62, 0.018, 0, 0, 0.06), (0.10, 0.38, 0.34),
                  specular=(0.6, 0.65, 0.7), name="water_surface")
     river.visual(box(240, 3.0, 0.04), (0, -54.2, 0.02, 0, 0, 0.06), (0.42, 0.38, 0.22),
                  name="sand_bank_north")
@@ -437,7 +480,8 @@ def build_world():
     # =======================================================================
 
     # 1. Пожар в лесном массиве
-    fire = Model("fire_hazard", pose=(60, 28, 0.2, 0, 0, 0))
+    fire_x, fire_y, fire_z = hazard_poses["FIRE"]
+    fire = Model("fire_hazard", pose=(fire_x, fire_y, fire_z, 0, 0, 0))
     fire.collision(cylinder(6.0, 0.6), (0, 0, 0))
     fire.visual(cylinder(8.5, 0.06), (0, 0, -0.17), (0.16, 0.10, 0.06), name="ash_outer")
     fire.visual(cylinder(6.5, 0.08), (0, 0, -0.15), (0.10, 0.06, 0.04), name="charred_ground")
@@ -458,7 +502,8 @@ def build_world():
     add(fire.xml())
 
     # 2. Разлив нефтепродуктов
-    oil = Model("oil_spill_hazard", pose=(-58, 30, 0.02, 0, 0, 0))
+    oil_x, oil_y, oil_z = hazard_poses["OIL"]
+    oil = Model("oil_spill_hazard", pose=(oil_x, oil_y, oil_z, 0, 0, 0))
     oil.collision(cylinder(9.0, 0.08), (0, 0, 0))
     oil.visual(cylinder(10.0, 0.05), (0, 0, -0.005), (0.10, 0.09, 0.08), name="spill_edge")
     oil.visual(cylinder(8.2, 0.06), (0, 0, 0.005), (0.03, 0.03, 0.04), name="spill_core")
@@ -469,7 +514,8 @@ def build_world():
     add(oil.xml())
 
     # 3. Зона затопления / паводок
-    flood = Model("flood_hazard", pose=(45, -56, 0.02, 0, 0, 0))
+    flood_x, flood_y, flood_z = hazard_poses["FLOOD"]
+    flood = Model("flood_hazard", pose=(flood_x, flood_y, flood_z, 0, 0, 0))
     flood.collision(cylinder(10.5, 0.10), (0, 0, 0))
     flood.visual(cylinder(11.5, 0.06), (0, 0, -0.002), (0.10, 0.32, 0.55), alpha=0.85,
                  specular=(0.7, 0.75, 0.8), name="flood_edge")
@@ -482,7 +528,8 @@ def build_world():
     add(flood.xml())
 
     # 4. Несанкционированная свалка / токсичные отходы
-    waste = Model("waste_hazard", pose=(68, -72, 0.4, 0, 0, 0))
+    waste_x, waste_y, waste_z = hazard_poses["WASTE"]
+    waste = Model("waste_hazard", pose=(waste_x, waste_y, waste_z, 0, 0, 0))
     waste.collision(box(9.0, 9.0, 1.4), (0, 0, 0.3))
     waste.visual(sphere(7.0), (0, 0, -3.0), (0.28, 0.22, 0.13), name="waste_hill")
     waste.visual(cylinder(9.0, 0.20), (0, 0, -0.25), (0.32, 0.26, 0.15), name="waste_pad")
@@ -510,11 +557,29 @@ def build_world():
 
 def main():
     world_xml = build_world()
-    with open(WORLD_PATH, "w", encoding="utf-8") as f:
-        f.write(world_xml)
-    print(f"[OK] Мир сгенерирован: {os.path.abspath(WORLD_PATH)}")
+    world_path = os.path.abspath(WORLD_PATH)
+    tmp_path = world_path + ".tmp"
+    try:
+        os.makedirs(os.path.dirname(world_path), exist_ok=True)
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(world_xml)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, world_path)  # атомарная публикация: битый world не останется
+    except OSError as exc:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        print(f"[ОШИБКА] Не удалось записать мир {world_path}: {exc}")
+        return 1
+    print(f"[OK] Мир сгенерирован: {world_path}")
     print(f"     Размер: {len(world_xml) / 1024.0:.1f} КБ, моделей: {world_xml.count('<model ')}")
+    print("     Очаги из config/hazards.json:")
+    for key, (hx, hy, hz) in load_hazard_poses().items():
+        print(f"       {key:<5} -> X={hx:.1f} Y={hy:.1f} Z={hz:.2f}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

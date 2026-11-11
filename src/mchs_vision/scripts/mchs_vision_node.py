@@ -27,6 +27,7 @@ import json
 import math
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -59,6 +60,9 @@ REPO_ROOT = os.path.dirname(PACKAGE_ROOT)
 SRC_DIR = os.path.join(REPO_ROOT, "src")
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
+
+#: Корень репозитория (родитель каталога src/) — для config/ и reports/.
+REPO_DIR = os.path.dirname(REPO_ROOT)
 
 try:
     from mchs_core import get_logger, install_crash_handler, log_event
@@ -153,6 +157,25 @@ class MchsVisionNode(Node):
         title = str(self.declare_parameter(
             "hud_title", "MCHS OPTICAL RECON // GAZEBO 11").value)
 
+        # --- Телеметрия для АРМ, фото очагов и протоколы ЦУКС ---
+        self.scan_status_topic = str(self.declare_parameter(
+            "scan_status_topic", "/mchs/scan_status").value)
+        self.reports_dir = str(self.declare_parameter(
+            "reports_dir", os.path.join(REPO_DIR, "reports")).value)
+        self.hazards_config_path = str(self.declare_parameter(
+            "hazards_config_path",
+            os.path.join(REPO_DIR, "config", "hazards.json")).value)
+        self.save_incident_photos = bool(self.declare_parameter(
+            "save_incident_photos", True).value)
+        self.protocol_enabled = bool(self.declare_parameter(
+            "protocol_enabled", True).value)
+        self.protocol_radius_m = float(self.declare_parameter(
+            "protocol_radius_m", 30.0).value)
+        self.protocol_cooldown_s = float(self.declare_parameter(
+            "protocol_cooldown_s", 15.0).value)
+        self.battery_percent = float(self.declare_parameter(
+            "battery_percent", 96.0).value)
+
         self.bridge = CvBridge()
         self._pose = Pose(x_m=0.0, y_m=0.0, z_m=self.fallback_altitude_m)
         self._pose_received = False
@@ -160,6 +183,31 @@ class MchsVisionNode(Node):
         self._frame_index = 0
         self._logged_events = {}
         self._window_created = False
+
+        # Данные телеметрии/скан-статуса/детекций для /state.json
+        self._hazards: dict = {}
+        self._hazards_loaded_at = 0.0
+        self._scan_status: dict = {}
+        self._scan_status_at = 0.0
+        self._vel_x = 0.0
+        self._vel_y = 0.0
+        self._speed_mps = 0.0
+        self._last_photo = ""
+        self._last_photo_time = 0.0
+        self._photo_count = 0
+        self._protocol_written: dict = {}
+        self._incident_counts: dict = {}
+        self._last_event: Optional[dict] = None
+        self._last_event_at = 0.0
+        self.incidents_dir = os.path.join(self.reports_dir, "incidents")
+        if self.save_incident_photos:
+            try:
+                os.makedirs(self.incidents_dir, exist_ok=True)
+            except OSError as exc:  # pragma: no cover - depends on FS
+                self.save_incident_photos = False
+                if self.logger:
+                    self.logger.warning(
+                        f"Каталог фото очагов недоступен: {exc}")
 
         self.pipeline = self._build_pipeline(self.image_width,
                                              self.image_height, enabled, title)
@@ -191,6 +239,11 @@ class MchsVisionNode(Node):
         self.annotated_publisher = self.create_publisher(
             Image, self.annotated_topic, 10
         )
+        self.create_subscription(String, self.scan_status_topic,
+                                  self._scan_status_callback, 10)
+        self._state_timer = self.create_timer(0.2, self._publish_state)
+
+        self._load_hazards()
 
         init_msg = (
             ">>> mchs_vision_node запущена: "
@@ -272,11 +325,218 @@ class MchsVisionNode(Node):
                 z_m=z,
                 yaw_rad=yaw,
             )
+            twist = msg.twist.twist.linear
+            self._vel_x = float(twist.x)
+            self._vel_y = float(twist.y)
+            self._speed_mps = float(math.hypot(twist.x, twist.y))
             self._pose_received = True
         except Exception as exc:
             self.get_logger().error(f"Ошибка обработки одометрии: {exc}")
             if self.logger:
                 self.logger.error(f"Ошибка обработки одометрии /mchs/odom: {exc}")
+
+    def _scan_status_callback(self, msg: String) -> None:
+        """Статус сканирования от автопилота (/mchs/scan_status, JSON)."""
+        try:
+            data = json.loads(msg.data)
+            if isinstance(data, dict):
+                self._scan_status = data
+                self._scan_status_at = time.time()
+        except (ValueError, TypeError):
+            pass
+
+    def _load_hazards(self) -> None:
+        """Читает конфиг очагов (координаты могут менять из АРМ)."""
+        try:
+            with open(self.hazards_config_path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, ValueError) as exc:
+            if self._hazards_loaded_at == 0.0 and self.logger:
+                self.logger.warning(
+                    f"Очаги не загружены из {self.hazards_config_path}: {exc}")
+            return
+        hazards = {
+            key: value for key, value in data.items()
+            if isinstance(value, dict) and "x" in value and "y" in value
+        }
+        if hazards:
+            self._hazards = hazards
+            self._hazards_loaded_at = time.time()
+
+    def _publish_state(self) -> None:
+        """Публикует телеметрию для АРМ: http://127.0.0.1:8080/state.json."""
+        if self.streamer is None:
+            return
+        now = time.time()
+        if now - self._hazards_loaded_at > 10.0:
+            self._load_hazards()
+        pose = self._pose
+        if self._speed_mps > 1.0:
+            heading_deg = math.degrees(
+                math.atan2(self._vel_y, self._vel_x)) % 360.0
+        else:
+            heading_deg = math.degrees(pose.yaw_rad) % 360.0
+        scan = self._scan_status if (
+            self._scan_status and now - self._scan_status_at < 5.0) else {}
+
+        def _num(value, default=0.0):
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return default
+
+        state = {
+            "ts": datetime.now().strftime("%H:%M:%S"),
+            "ok": True,
+            "drone": {
+                "x": round(pose.x_m, 2),
+                "y": round(pose.y_m, 2),
+                "z": round(pose.z_m, 2),
+                "yaw_deg": round(heading_deg, 1),
+                "body_yaw_deg": round(
+                    math.degrees(pose.yaw_rad) % 360.0, 1),
+                "speed_mps": round(self._speed_mps, 2),
+                "battery_pct": round(self.battery_percent, 1),
+            },
+            "scan": {
+                "row": int(_num(scan.get("row"), 0)),
+                "rows_total": int(_num(scan.get("rows_total"), 0)),
+                "progress": round(_num(scan.get("progress"), 0.0), 3),
+                "phase": str(scan.get("phase") or "ДЕЖУРСТВО"),
+            },
+            "detection": {
+                "last_event": self._last_event,
+                "counts": dict(self._incident_counts),
+            },
+            "reports": {
+                "incidents_dir": "reports/incidents",
+                "last_photo": self._last_photo,
+                "protocol": "reports/incident_protocol.json",
+                "photo_count": self._photo_count,
+            },
+        }
+        self.streamer.set_state(state)
+
+    def _save_incident_photo(self, event: dict, frame) -> None:
+        """Сохраняет кадр с HUD как фотодоказательство очага."""
+        if not self.save_incident_photos or frame is None:
+            return
+        now = time.time()
+        if now - self._last_photo_time < 4.0:
+            return
+        try:
+            stamp = datetime.now().strftime("%H%M%S")
+            incident_id = str(event.get("incident_id") or "INC")
+            name = f"{incident_id}_{stamp}.jpg"
+            path = os.path.join(self.incidents_dir, name)
+            if not cv2.imwrite(path, frame):
+                return
+            self._last_photo = f"reports/incidents/{name}"
+            self._last_photo_time = now
+            self._photo_count += 1
+            if self.logger:
+                self.logger.info(f"Фото очага сохранено: {path}")
+        except Exception as exc:  # noqa: BLE001 - не роняем полёт из-за фото
+            if self.logger:
+                self.logger.warning(f"Не удалось сохранить фото очага: {exc}")
+
+    def _match_hazard(self, event: dict):
+        """Ищет ближайший очаг из config/hazards.json к событию детекции."""
+        geo = event.get("target_geo") or {}
+        try:
+            event_x = float(geo.get("abs_x"))
+            event_y = float(geo.get("abs_y"))
+        except (TypeError, ValueError):
+            return None, None
+        hazard_type = str(event.get("hazard_type") or "").upper()
+        best_key = None
+        best_dist = 1e9
+        for key, hazard in (self._hazards or {}).items():
+            try:
+                hazard_x = float(hazard["x"])
+                hazard_y = float(hazard["y"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            classes = [str(name).upper()
+                       for name in (hazard.get("detect_classes") or [])]
+            if classes and hazard_type not in classes:
+                continue
+            dist = math.hypot(event_x - hazard_x, event_y - hazard_y)
+            if dist <= self.protocol_radius_m and dist < best_dist:
+                best_key = key
+                best_dist = dist
+        return best_key, best_dist
+
+    def _maybe_write_protocol(self, event: dict) -> None:
+        """Пишет reports/incident_protocol.json при подтверждении очага.
+
+        Протокол формируется только если детекция находится рядом с одним из
+        очагов из config/hazards.json и её класс совпадает — это отсекает
+        ложные срабатывания детектора и даёт АРМ реальную тревогу с борта.
+        """
+        if not self.protocol_enabled:
+            return
+        threat = str(event.get("threat_level") or "").upper()
+        if threat not in ("WARNING", "CRITICAL"):
+            return
+        key, dist = self._match_hazard(event)
+        if key is None:
+            return
+        now = time.time()
+        if now - self._protocol_written.get(key, 0.0) < self.protocol_cooldown_s:
+            return
+        hazard = self._hazards.get(key) or {}
+        self._protocol_written[key] = now
+        geo = event.get("target_geo") or {}
+        stamp = datetime.now()
+        protocol = {
+            "mchs_incident_report": {
+                "incident_id": event.get("incident_id"),
+                "hazard_type": str(hazard.get("title") or key).upper(),
+                "hazard_code": key,
+                "threat_level": threat,
+                "estimated_area_sq_m": event.get("area_sq_m"),
+                "target_geo": {
+                    "abs_x": geo.get("abs_x"),
+                    "abs_y": geo.get("abs_y"),
+                    "latitude": geo.get("lat"),
+                    "longitude": geo.get("lon"),
+                },
+                "confidence": event.get("confidence"),
+                "drone_telemetry": {
+                    "drone_id": "MCHS-UAV-04",
+                    "altitude_m": round(self._pose.z_m, 1),
+                    "battery_percent": round(self.battery_percent, 0),
+                    "grid_x_m": round(self._pose.x_m, 1),
+                    "grid_y_m": round(self._pose.y_m, 1),
+                },
+                "recommended_response": hazard.get("response", ""),
+                "recommended_actions": [
+                    "Передать координаты в ЦУКС и ЕДДС района",
+                    "Оповестить оперативного дежурного ПСЧ",
+                    f"Учесть характер ЧС: {hazard.get('details', '')}",
+                ],
+                "timestamp_msk": stamp.strftime("%d.%m.%Y %H:%M:%S"),
+                "timestamp": stamp.isoformat(timespec="seconds"),
+                "protocol_version": "3.0",
+                "source": "VISION",
+                "distance_to_hazard_m": round(dist, 1),
+            }
+        }
+        path = os.path.join(self.reports_dir, "incident_protocol.json")
+        try:
+            os.makedirs(self.reports_dir, exist_ok=True)
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as handle:
+                json.dump(protocol, handle, ensure_ascii=False, indent=2)
+            os.replace(tmp, path)
+            if self.logger:
+                self.logger.info(
+                    f"Протокол ЦУКС сформирован: {key} "
+                    f"({dist:.0f} м до очага) -> {path}")
+        except OSError as exc:
+            if self.logger:
+                self.logger.warning(f"Не удалось записать протокол: {exc}")
 
     def _image_callback(self, msg: Image) -> None:
         self._frame_index += 1
@@ -344,10 +604,29 @@ class MchsVisionNode(Node):
             self.event_publisher.publish(
                 String(data=json.dumps(event, ensure_ascii=False))
             )
-            self._log_event(event)
+            is_new = self._log_event(event)
             if log_event is not None:
                 lvl = "ERROR" if event.get("threat_level") == "CRITICAL" else "WARNING"
                 log_event("VISION", "HAZARD_DETECTED", event, level=lvl)
+            if is_new:
+                geo = event.get("target_geo") or {}
+                self._last_event = {
+                    "incident_id": event.get("incident_id"),
+                    "hazard_type": event.get("hazard_type"),
+                    "threat_level": event.get("threat_level"),
+                    "area_sq_m": event.get("area_sq_m"),
+                    "x": geo.get("abs_x"),
+                    "y": geo.get("abs_y"),
+                    "ts": datetime.now().strftime("%H:%M:%S"),
+                }
+                self._last_event_at = time.time()
+                hazard_class = str(event.get("hazard_type") or "CHS")
+                self._incident_counts[hazard_class] = (
+                    self._incident_counts.get(hazard_class, 0) + 1)
+                if str(event.get("threat_level") or "").upper() in (
+                        "WARNING", "CRITICAL"):
+                    self._save_incident_photo(event, result.annotated)
+            self._maybe_write_protocol(event)
 
         if self.streamer is not None:
             self.streamer.update(result.annotated)
@@ -369,16 +648,22 @@ class MchsVisionNode(Node):
         stamp = msg.header.stamp
         if stamp.sec == 0 and stamp.nanosec == 0:
             return datetime.now().astimezone()
-        return datetime.fromtimestamp(
+        moment = datetime.fromtimestamp(
             float(stamp.sec) + float(stamp.nanosec) * 1e-9, tz=timezone.utc
         ).astimezone()
+        # Gazebo отдаёт время симуляции с начала запуска (~1970-01-01):
+        # для протоколов и отчётов оператора используем реальные часы.
+        if moment.year < 2000:
+            return datetime.now().astimezone()
+        return moment
 
-    def _log_event(self, event: dict) -> None:
+    def _log_event(self, event: dict) -> bool:
+        """Пишет событие в лог один раз на пару (incident_id, threat)."""
         incident_id = event.get("incident_id", "")
         threat = event.get("threat_level", "")
         previous = self._logged_events.get(incident_id)
         if previous == threat:
-            return
+            return False
         self._logged_events[incident_id] = threat
         msg = (
             f"[{incident_id}] {event.get('hazard_type')} {threat}: "
@@ -393,6 +678,7 @@ class MchsVisionNode(Node):
                 self.logger.error(msg)
             else:
                 self.logger.warning(msg)
+        return True
 
     def _show_window(self, frame) -> None:
         try:

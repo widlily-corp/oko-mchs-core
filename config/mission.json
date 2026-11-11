@@ -1,0 +1,29 @@
+{
+  "_comment": "Единый план полёта и параметры арены для БПЛА МЧС (config/mission.json). Читается автопилотом mchs_pilot_route.py и АРМ оператора src/mchs_ui/app.py.",
+  "arena": {
+    "width_m": 200.0,
+    "height_m": 200.0
+  },
+  "drone": {
+    "altitude_m": 22.0,
+    "cruise_speed_mps": 12.0,
+    "arrive_radius_m": 3.0,
+    "sim_model": "largedrone"
+  },
+  "scan": {
+    "_comment": "Змейка (boustrophedon) по всей арене. Ряды идут по оси X, шаг между рядами row_step_m по Y.",
+    "x_min": -92.0,
+    "x_max": 92.0,
+    "y_min": -84.0,
+    "y_max": 84.0,
+    "row_step_m": 28.0
+  },
+  "topics": {
+    "cmd_vel": "/mchs/cmd_vel",
+    "odom": "/mchs/odom",
+    "scan_status": "/mchs/scan_status"
+  },
+  "hazards_file": "config/hazards.json",
+  "reports_dir": "reports",
+  "mission_cmd_file": "reports/mission.cmd"
+}
