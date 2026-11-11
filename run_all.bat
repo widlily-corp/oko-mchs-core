@@ -1,19 +1,27 @@
 @echo off
+setlocal
 pushd "%~dp0"
+
+set "REPO_UNC=%~dp0"
+set "REPO_UNC=%REPO_UNC:\=/%"
+cd /d "%TEMP%"
+for /f "usebackq delims=" %%I in (`wsl.exe -d Ubuntu-22.04 wslpath -u "%REPO_UNC%"`) do set "REPO_WSL=%%I"
+if not defined REPO_WSL set "REPO_WSL=/root/Rep/oko-mchs-core"
+
 echo ========================================================
 echo       KOMPLEKS OKO MCHS: UNIFIED SYSTEM LAUNCH
 echo ========================================================
-echo [1/4] Stopping stale processes...
-wsl.exe -d Ubuntu-22.04 bash -c "killall -9 gazebo gzserver gzclient python3 2>/dev/null || true"
+echo [1/4] Stopping stale simulation processes...
+wsl.exe -d Ubuntu-22.04 bash -c "pkill -9 -x gzserver 2>/dev/null || true; pkill -9 -f '[m]chs_vision_node.py' 2>/dev/null || true; pkill -9 -f '[m]chs_pilot_route.py' 2>/dev/null || true"
 
 echo [2/4] Starting Gazebo, Vision and Pilot in WSL...
-start "OKO MCHS - SIMULATION & AUTOPILOT (WSL)" wsl.exe -d Ubuntu-22.04 bash -c "MCHS_NO_UI=1 bash /root/oko-mchs-core/scripts/run_all.sh"
+start "OKO MCHS - SIMULATION & AUTOPILOT (WSL)" wsl.exe -d Ubuntu-22.04 bash -c "MCHS_NO_UI=1 bash '%REPO_WSL%/scripts/run_all.sh'"
 
-echo [3/4] Waiting 5 seconds for nodes initialization...
-timeout /t 5 /nobreak >nul
+echo [3/4] Waiting 8 seconds for nodes initialization...
+timeout /t 8 /nobreak >nul
 
 echo [4/4] Starting Operator Station on Windows...
-start "OKO MCHS - OPERATOR UI" python "\\wsl.localhost\Ubuntu-22.04\root\oko-mchs-core\src\mchs_ui\app.py"
+start "OKO MCHS - OPERATOR UI" python "%~dp0src\mchs_ui\app.py"
 
 echo ========================================================
 echo ALL SYSTEMS ACTIVE!

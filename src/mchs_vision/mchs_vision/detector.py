@@ -212,8 +212,26 @@ class HazardDetector:
             "rectangularity": contour_area / rect_area if rect_area > 0.0 else 1.0,
         }
 
+    @staticmethod
+    def _stripe_fraction(hsv_roi: np.ndarray, mask_roi: np.ndarray,
+                         pixel_count: int) -> float:
+        """Доля бирюзовых пикселей (светоотражающая полоса жилета)."""
+        if pixel_count <= 0:
+            return 0.0
+        cyan = cv2.inRange(
+            hsv_roi,
+            np.array([75, 60, 60], dtype=np.uint8),
+            np.array([120, 255, 255], dtype=np.uint8),
+        )
+        cyan = cv2.bitwise_and(cyan, mask_roi)
+        return float(cv2.countNonZero(cyan)) / float(pixel_count)
+
     def _passes_class_filters(self, cand: Dict, spec: HazardClassSpec) -> bool:
         """Единые цветовые/геометрические правила для класса."""
+        if spec.name in ("VICTIM", "HUMAN") and \
+                cand.get("stripe_fraction", 0.0) < \
+                self.config.victim_min_stripe_fraction:
+            return False
         return (
             cand["fill"] >= self.config.min_fill_ratio
             and cand["fill"] <= spec.max_fill_ratio
@@ -244,7 +262,8 @@ class HazardDetector:
             x, y, bw, bh = cv2.boundingRect(contour)
             if bw <= 0 or bh <= 0:
                 continue
-            if max(bw, bh) / float(min(bw, bh)) > self.config.max_aspect_ratio:
+            if max(bw, bh) / float(min(bw, bh)) \
+                    > min(self.config.max_aspect_ratio, spec.max_aspect_ratio):
                 continue
             if self._border_touches((x, y, bw, bh), width, height) \
                     > self.config.border_touch_limit + spec.max_border_touches:
@@ -271,6 +290,8 @@ class HazardDetector:
             lap_roi = laplacian[y:y + bh, x:x + bw]
             texture_std = float(lap_roi[roi_mask > 0].std())
             purity = self._color_purity(spec.name, mean_hsv)
+            stripe_fraction = self._stripe_fraction(hsv_roi, roi_mask,
+                                                    pixel_count)
 
             moments = cv2.moments(contour)
             if abs(moments["m00"]) > 1e-9:
@@ -291,6 +312,7 @@ class HazardDetector:
                 "texture": texture_std,
                 "hue_std": hue_std,
                 "purity": purity,
+                "stripe_fraction": stripe_fraction,
                 "solidity": shape["solidity"],
                 "hull_ratio": shape["hull_ratio"],
                 "rectangularity": shape["rectangularity"],
@@ -396,6 +418,7 @@ class HazardDetector:
             # здесь сохраняем средневзвешенную чистоту группы.
             weights = [max(c["area"], 1.0) for c in group]
             purity = sum(c["purity"] * w for c, w in zip(group, weights)) / sum(weights)
+            stripe_fraction = self._stripe_fraction(hsv_roi, roi, pixel_count)
             shape = self._shape_features(contour, pixel_count)
             candidate = {
                 "contour": contour,
@@ -409,6 +432,7 @@ class HazardDetector:
                 "texture": texture,
                 "hue_std": hue_std,
                 "purity": purity,
+                "stripe_fraction": stripe_fraction,
                 "solidity": shape["solidity"],
                 "hull_ratio": shape["hull_ratio"],
                 "rectangularity": shape["rectangularity"],

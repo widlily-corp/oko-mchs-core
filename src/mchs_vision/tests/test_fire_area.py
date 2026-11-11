@@ -163,3 +163,65 @@ def test_cli_estimate_fire_area():
         assert data["has_fire"] is True
         assert data["flame_area_m2"] > 0.0
         assert "flame_area_ha" in data
+
+
+def test_real_gazebo_fire_area_uses_tilted_camera():
+    """Реальный кадр 45°: площадь должна быть физичной, а не надирной."""
+    data = os.path.abspath(os.path.join(os.path.dirname(__file__), "data"))
+    image = cv2.imread(os.path.join(data, "gazebo_fire_1280.png"))
+    assert image is not None
+    camera = CameraConfig(
+        width=1280, height=720, hfov_deg=80.0, pitch_down_deg=45.0,
+        mount_forward_m=0.42, mount_up_m=0.12,
+    )
+    result = FireAreaEstimator(camera=camera).estimate(
+        image, pose=Pose(x_m=41.76, y_m=27.84, z_m=22.0, yaw_rad=0.0)
+    )
+    assert result.has_fire is True
+    assert 10.0 <= result.flame_area_m2 <= 30.0
+    assert result.smoke_area_m2 == 0.0
+
+
+def test_real_gazebo_clean_frames_have_no_fire_or_smoke():
+    """Оранжевое кольцо, контейнеры, крыши, река и нефть — не пожар."""
+    data = os.path.abspath(os.path.join(os.path.dirname(__file__), "data"))
+    camera = CameraConfig(
+        width=1280, height=720, hfov_deg=80.0, pitch_down_deg=45.0,
+        mount_forward_m=0.42, mount_up_m=0.12,
+    )
+    estimator = FireAreaEstimator(camera=camera)
+    for name in (
+        "gazebo_helipad_1280.png",
+        "gazebo_containers_1280.png",
+        "gazebo_home_1280.png",
+        "gazebo_oil_1280.png",
+        "gazebo_flood_1280.png",
+    ):
+        image = cv2.imread(os.path.join(data, name))
+        assert image is not None, name
+        result = estimator.estimate(
+            image, pose=Pose(x_m=0.0, y_m=0.0, z_m=22.0, yaw_rad=0.0)
+        )
+        assert result.has_fire is False, name
+        assert result.has_smoke is False, name
+
+
+def test_cli_default_pitch_matches_largedrone_camera():
+    """Команда из чек-листа без --pitch должна считать кадр 45°, а не надир."""
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__),
+                                             "..", "..", ".."))
+    image = os.path.join(repo_root, "src", "mchs_vision", "tests", "data",
+                         "gazebo_fire_1280.png")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        json_path = os.path.join(tmp_dir, "fire.json")
+        proc = subprocess.run(
+            [sys.executable, os.path.join(repo_root, "scripts",
+                                          "estimate_fire_area.py"),
+             "--input", image, "--altitude", "22.0", "--json", json_path],
+            capture_output=True, text=True,
+        )
+        assert proc.returncode == 0, proc.stderr
+        with open(json_path, encoding="utf-8") as handle:
+            data = json.load(handle)
+        assert data["pitch_deg"] == 45.0
+        assert 10.0 <= data["flame_area_m2"] <= 30.0

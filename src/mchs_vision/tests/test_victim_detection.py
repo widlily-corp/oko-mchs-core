@@ -14,6 +14,7 @@ from mchs_vision.config import CameraConfig, DetectorConfig, GeoOrigin, HazardCl
 from mchs_vision.detector import Detection, HazardDetector
 from mchs_vision.events import EventFactory, IncidentRegistry, save_victim_evidence_snapshot
 from mchs_vision.geometry import GroundProjector, Pose
+from mchs_vision.pipeline import VisionPipeline
 
 
 @pytest.fixture
@@ -124,3 +125,55 @@ def test_victim_photo_snapshot_saving(camera):
         saved_img = cv2.imread(full_path)
         assert saved_img is not None
         assert saved_img.shape == frame.shape
+
+
+def test_pipeline_victim_event_is_always_critical(camera):
+    """Человек — CRITICAL независимо от видимой площади (не ADVISORY)."""
+    frame = create_synthetic_victim_frame(vest_x=640, vest_y=360)
+    pipeline = VisionPipeline(
+        camera=camera,
+        detector_config=DetectorConfig(enabled=("VICTIM",), track_min_hits=1),
+    )
+    result = pipeline.process(frame, Pose(x_m=20.0, y_m=-15.0, z_m=22.0),
+                              draw=False)
+    assert result.primary is not None
+    assert result.primary.hazard_type == "VICTIM"
+    assert result.primary.threat_level == "CRITICAL"
+    assert result.events[0]["threat_level"] == "CRITICAL"
+
+
+def test_victim_clean_gazebo_frames_are_rejected():
+    """Оранжевые контейнеры/крыши не должны становиться пострадавшими."""
+    data = os.path.abspath(os.path.join(os.path.dirname(__file__), "data"))
+    camera = CameraConfig(
+        width=1280, height=720, hfov_deg=80.0, pitch_down_deg=45.0,
+        mount_forward_m=0.42, mount_up_m=0.12,
+    )
+    for name in (
+        "gazebo_containers_1280.png",
+        "gazebo_helipad_1280.png",
+        "gazebo_home_1280.png",
+    ):
+        frame = cv2.imread(os.path.join(data, name))
+        assert frame is not None, name
+        pipeline = VisionPipeline(
+            camera=camera,
+            detector_config=DetectorConfig(enabled=("VICTIM",),
+                                            track_min_hits=1),
+        )
+        result = pipeline.process(frame, Pose(x_m=0.0, y_m=0.0, z_m=22.0),
+                                  draw=False)
+        assert result.records == [], name
+
+
+def test_victim_rejects_wide_orange_strip(camera):
+    """Длинная оранжевая полоса (борт техники) — не человек."""
+    frame = np.full((720, 1280, 3), (35, 60, 25), dtype=np.uint8)
+    cv2.rectangle(frame, (500, 350), (760, 368), (34, 87, 255), -1)
+    pipeline = VisionPipeline(
+        camera=camera,
+        detector_config=DetectorConfig(enabled=("VICTIM",), track_min_hits=1),
+    )
+    result = pipeline.process(frame, Pose(x_m=0.0, y_m=0.0, z_m=22.0),
+                              draw=False)
+    assert result.records == []

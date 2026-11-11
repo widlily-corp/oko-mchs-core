@@ -75,3 +75,16 @@ def test_video_reporter_compiles_valid_video():
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         assert frame_count >= 15, f"Недостаточно кадров в ролике: {frame_count}"
         cap.release()
+
+
+def test_video_reporter_uses_cyrillic_capable_font():
+    """OpenCV Hershey рисовал '?' вместо русского; должен быть TrueType-шрифт."""
+    reporter = MissionVideoReporter(VideoReportConfig(width=640, height=360))
+    assert reporter._regular_font_path is not None
+    card = reporter._render_title_card(
+        "ОКО МЧС // ОПЕРАТИВНЫЙ РАПОРТ",
+        "АВТОНОМНОЕ ВЫЯВЛЕНИЕ ЧРЕЗВЫЧАЙНЫХ СИТУАЦИЙ",
+        "11.11.2026 21:00:00 МСК",
+    )
+    assert card.shape == (360, 640, 3)
+    assert card.mean() > 0

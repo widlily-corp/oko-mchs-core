@@ -18,6 +18,7 @@ from typing import Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 
 
 @dataclass
@@ -41,8 +42,72 @@ class MissionVideoReporter:
         ("MJPG", ".avi"),
     ]
 
+    # TrueType-шрифты с кириллицей. OpenCV Hershey не умеет русский текст.
+    FONT_CANDIDATES = (
+        r"C:\Windows\Fonts\arial.ttf",
+        r"C:\Windows\Fonts\segoeui.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+    )
+    FONT_BOLD_CANDIDATES = (
+        r"C:\Windows\Fonts\arialbd.ttf",
+        r"C:\Windows\Fonts\segoeuib.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    )
+
     def __init__(self, config: Optional[VideoReportConfig] = None):
         self.config = config or VideoReportConfig()
+        self._regular_font_path = self._resolve_font(self.FONT_CANDIDATES)
+        self._bold_font_path = self._resolve_font(self.FONT_BOLD_CANDIDATES) \
+            or self._regular_font_path
+
+    @staticmethod
+    def _resolve_font(candidates) -> Optional[str]:
+        for path in candidates:
+            if os.path.isfile(path):
+                return path
+        return None
+
+    def _font(self, size: int, bold: bool = False):
+        path = self._bold_font_path if bold else self._regular_font_path
+        if path:
+            try:
+                return ImageFont.truetype(path, max(8, int(size)))
+            except OSError:
+                pass
+        return ImageFont.load_default()
+
+    def _draw_texts(self, frame: np.ndarray, items) -> np.ndarray:
+        """Нарисовать список (text, x, y, size, bgr, bold, max_width) через PIL."""
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        image = Image.fromarray(rgb)
+        draw = ImageDraw.Draw(image)
+        for item in items:
+            text, x, y, size, color_bgr = item[:5]
+            bold = bool(item[5]) if len(item) > 5 else False
+            max_width = item[6] if len(item) > 6 else None
+            font = self._font(size, bold)
+            if max_width:
+                while size > 10:
+                    box = draw.textbbox((0, 0), text, font=font)
+                    if box[2] - box[0] <= max_width:
+                        break
+                    size -= 1
+                    font = self._font(size, bold)
+                box = draw.textbbox((0, 0), text, font=font)
+                if box[2] - box[0] > max_width:
+                    # Обрезаем длинную строку, чтобы она не уезжала за кадр.
+                    while text and draw.textbbox(
+                            (0, 0), text + "…", font=font)[2] > max_width:
+                        text = text[:-1]
+                    text += "…"
+            color_rgb = (int(color_bgr[2]), int(color_bgr[1]),
+                         int(color_bgr[0]))
+            draw.text((int(x), int(y)), text, font=font, fill=color_rgb)
+        return cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR)
 
     def _create_writer(self, target_path: str) -> Tuple[cv2.VideoWriter, str]:
         """Инициализация VideoWriter с каскадом кодеков."""
@@ -66,6 +131,11 @@ class MissionVideoReporter:
     def _render_title_card(self, title: str, subtitle: str, timestamp_str: str) -> np.ndarray:
         """Создаёт кадр титульной заставки."""
         w, h = self.config.width, self.config.height
+        scale = min(w / 1280.0, h / 720.0)
+        x0 = max(12, int(80 * scale))
+        max_w = w - 2 * x0
+        fs = lambda value: max(10, int(value * scale))  # noqa: E731
+        ys = lambda value: int(value * scale)  # noqa: E731
         frame = np.full((h, w, 3), (15, 20, 28), dtype=np.uint8)
 
         # Фоновая тактическая сетка
@@ -79,23 +149,31 @@ class MissionVideoReporter:
         cv2.rectangle(frame, (40, 40), (w - 40, h - 40), (0, 140, 255), 2)
         cv2.rectangle(frame, (44, 44), (w - 44, h - 44), (0, 80, 180), 1)
 
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        # Заголовок
-        cv2.putText(frame, self.config.organization, (80, 120), font, 0.75, (0, 210, 255), 2, cv2.LINE_AA)
-        cv2.putText(frame, title, (80, 200), font, 1.25, (255, 255, 255), 3, cv2.LINE_AA)
-        cv2.putText(frame, subtitle, (80, 260), font, 0.85, (0, 160, 255), 2, cv2.LINE_AA)
-
-        # Данные БПЛА и время
-        cv2.line(frame, (80, 310), (w - 80, 310), (0, 120, 200), 2)
-        cv2.putText(frame, f"БОРТОВОЙ КОМПЛЕКС: {self.config.uav_callsign}", (80, 380), font, 0.70, (220, 230, 240), 2, cv2.LINE_AA)
-        cv2.putText(frame, f"ДАТА И ВРЕМЯ ФОРМИРОВАНИЯ: {timestamp_str}", (80, 430), font, 0.65, (160, 180, 200), 1, cv2.LINE_AA)
-        cv2.putText(frame, "СТАТУС МИССИИ: АВТОНОМНЫЙ ПАТРУЛЬ // ДАННЫЕ ЗАФИКСИРОВАНЫ", (80, 480), font, 0.60, (0, 220, 120), 2, cv2.LINE_AA)
-
-        return frame
+        items = [
+            (self.config.organization, x0, ys(70), fs(38),
+             (0, 210, 255), True, max_w),
+            (title, x0, ys(145), fs(62), (255, 255, 255), True, max_w),
+            (subtitle, x0, ys(230), fs(36), (0, 160, 255), False, max_w),
+        ]
+        cv2.line(frame, (x0, ys(300)), (w - x0, ys(300)), (0, 120, 200), 2)
+        items.extend([
+            (f"БОРТОВОЙ КОМПЛЕКС: {self.config.uav_callsign}",
+             x0, ys(355), fs(28), (220, 230, 240), False, max_w),
+            (f"ДАТА И ВРЕМЯ ФОРМИРОВАНИЯ: {timestamp_str}",
+             x0, ys(405), fs(24), (160, 180, 200), False, max_w),
+            ("СТАТУС МИССИИ: АВТОНОМНЫЙ ПАТРУЛЬ // ДАННЫЕ ЗАФИКСИРОВАНЫ",
+             x0, ys(460), fs(24), (0, 220, 120), True, max_w),
+        ])
+        return self._draw_texts(frame, items)
 
     def _render_summary_card(self, stats: Dict[str, any]) -> np.ndarray:
         """Создаёт финальный экран с итогами миссии."""
         w, h = self.config.width, self.config.height
+        scale = min(w / 1280.0, h / 720.0)
+        x0 = max(12, int(80 * scale))
+        max_w = w - 2 * x0
+        fs = lambda value: max(10, int(value * scale))  # noqa: E731
+        ys = lambda value: int(value * scale)  # noqa: E731
         frame = np.full((h, w, 3), (12, 16, 22), dtype=np.uint8)
 
         # Фоновая тактическая сетка
@@ -105,21 +183,24 @@ class MissionVideoReporter:
         for y in range(0, h, 60):
             cv2.line(frame, (0, y), (w, y), grid_color, 1)
 
-        cv2.rectangle(frame, (40, 40), (w - 40, h - 40), (0, 210, 120), 2)
-        font = cv2.FONT_HERSHEY_SIMPLEX
+        cv2.rectangle(frame, (int(40*scale), int(40*scale)),
+                      (w - int(40*scale), h - int(40*scale)), (0, 210, 120), 2)
+        items = [
+            ("СВОДНЫЙ ОТЧЁТ РЕЗУЛЬТАТОВ ВОЗДУШНОГО ПАТРУЛЯ",
+             x0, ys(75), fs(42), (255, 255, 255), True, max_w),
+        ]
+        cv2.line(frame, (x0, ys(150)), (w - x0, ys(150)), (0, 210, 120), 2)
 
-        cv2.putText(frame, "СВОДНЫЙ ОТЧЁТ РЕЗУЛЬТАТОВ ВОЗДУШНОГО ПАТРУЛЯ", (80, 120), font, 1.0, (255, 255, 255), 2, cv2.LINE_AA)
-        cv2.line(frame, (80, 150), (w - 80, 150), (0, 210, 120), 2)
-
-        y_offset = 220
+        y_offset = ys(190)
         for key, val in stats.items():
             label = str(key).upper().replace("_", " ")
-            text = f"{label}: {val}"
-            cv2.putText(frame, text, (80, y_offset), font, 0.72, (200, 220, 240), 2, cv2.LINE_AA)
-            y_offset += 55
+            items.append((f"{label}: {val}", x0, y_offset, fs(28),
+                          (200, 220, 240), False, max_w))
+            y_offset += ys(55)
 
-        cv2.putText(frame, "МАТЕРИАЛЫ ПЕРЕДАНЫ В ОПЕРАТИВНЫЙ ШТАБ ЦУКС МЧС РОССИИ", (80, h - 80), font, 0.65, (0, 210, 255), 2, cv2.LINE_AA)
-        return frame
+        items.append(("МАТЕРИАЛЫ ПЕРЕДАНЫ В ОПЕРАТИВНЫЙ ШТАБ ЦУКС МЧС РОССИИ",
+                      x0, h - ys(90), fs(24), (0, 210, 255), True, max_w))
+        return self._draw_texts(frame, items)
 
     def compile_report(
         self,
@@ -154,14 +235,26 @@ class MissionVideoReporter:
 
             # 3. Карточки инцидентов (если переданы)
             if incidents:
+                card_scale = min(w / 1280.0, h / 720.0)
+                cx0 = max(12, int(90 * card_scale))
+                cmax = w - 2 * cx0
+                cfs = lambda value: max(10, int(value * card_scale))  # noqa: E731
+                cys = lambda value: int(value * card_scale)  # noqa: E731
                 for inc in incidents:
                     card = np.full((h, w, 3), (18, 22, 32), dtype=np.uint8)
-                    cv2.rectangle(card, (50, 50), (w - 50, h - 50), (0, 90, 255), 2)
-                    font = cv2.FONT_HERSHEY_SIMPLEX
-                    cv2.putText(card, f"ОБНАРУЖЕН ИНЦИДЕНТ: {inc.get('type', 'ЧС')}", (90, 140), font, 1.1, (0, 90, 255), 3, cv2.LINE_AA)
-                    cv2.putText(card, f"ОПИСАНИЕ: {inc.get('label', '')}", (90, 220), font, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
-                    cv2.putText(card, f"КООРДИНАТЫ: {inc.get('coords', '')}", (90, 290), font, 0.8, (0, 220, 255), 2, cv2.LINE_AA)
-                    cv2.putText(card, f"МАСШТАБ / ПЛОЩАДЬ: {inc.get('area', '')}", (90, 360), font, 0.8, (200, 240, 200), 2, cv2.LINE_AA)
+                    cv2.rectangle(card, (int(50*card_scale), int(50*card_scale)),
+                                  (w - int(50*card_scale), h - int(50*card_scale)),
+                                  (0, 90, 255), 2)
+                    card = self._draw_texts(card, [
+                        (f"ОБНАРУЖЕН ИНЦИДЕНТ: {inc.get('type', 'ЧС')}",
+                         cx0, cys(105), cfs(38), (0, 90, 255), True, cmax),
+                        (f"ОПИСАНИЕ: {inc.get('label', '')}",
+                         cx0, cys(190), cfs(28), (255, 255, 255), False, cmax),
+                        (f"КООРДИНАТЫ: {inc.get('coords', '')}",
+                         cx0, cys(255), cfs(28), (0, 220, 255), False, cmax),
+                        (f"МАСШТАБ / ПЛОЩАДЬ: {inc.get('area', '')}",
+                         cx0, cys(320), cfs(28), (200, 240, 200), False, cmax),
+                    ])
                     card_hold = int(fps * 1.5)
                     for _ in range(card_hold):
                         writer.write(card)

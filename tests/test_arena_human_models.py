@@ -35,6 +35,12 @@ def test_person_model_exists_and_valid_sdf():
     assert model is not None
     assert "person" in model.attrib.get("name", "").lower()
 
+    # Gazebo 11/ODE не поддерживает capsule и падает с assertion.
+    with open(sdf_path, "r", encoding="utf-8") as handle:
+        sdf_text = handle.read()
+    assert "<capsule" not in sdf_text
+    assert "<cylinder" in sdf_text
+
 
 def test_hazards_config_includes_human():
     """Проверяет, что config/hazards.json содержит цель HUMAN/VICTIM с координатами."""

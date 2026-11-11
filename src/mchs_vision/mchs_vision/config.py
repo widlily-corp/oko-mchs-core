@@ -59,6 +59,11 @@ class HazardClassSpec:
             но кадр, полностью залитый синим (небо/фон), — не затопление.
         min_area_m2: минимальная площадь очага в метрах для публикации.
             Мелкие блики и фрагменты построек не должны создавать инцидент.
+        max_area_m2: максимальная площадь для класса. Для человека это
+            страховка от оранжевых контейнеров/крыш: человек с 22 м — доли м²,
+            а не 10–20 м².
+        max_aspect_ratio: максимальное отношение сторон bbox. Для человека
+            дополнительно отсекает длинные оранжевые полосы/борта техники.
         description: пояснение для документации.
     """
 
@@ -79,6 +84,8 @@ class HazardClassSpec:
     max_mean_value: float = 255.0
     max_border_touches: int = 0
     min_area_m2: float = 0.0
+    max_area_m2: float = 1_000_000.0
+    max_aspect_ratio: float = 10.0
     description: str = ""
 
 
@@ -170,6 +177,8 @@ VICTIM = HazardClassSpec(
     min_hull_ratio=0.20,
     max_rectangularity=0.98,
     min_area_m2=0.1,
+    max_area_m2=6.0,
+    max_aspect_ratio=3.0,
     description="Силуэт человека / спасательный сигнальный жилет.",
 )
 
@@ -211,6 +220,10 @@ class DetectorConfig:
     track_match_iou: float = 0.25
     track_match_distance_px: float = 45.0
     smoothing_alpha: float = 0.45       # EMA для координат/площади
+
+    # Дополнительный признак пострадавшего: светоотражающая полоса
+    # (бирюзовый/циан) внутри bbox оранжевого жилета.
+    victim_min_stripe_fraction: float = 0.02
 
     # Уровни опасности по площади (из ТЗ хакатона).
     threat_warning_m2: float = 15.0

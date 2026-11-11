@@ -75,7 +75,7 @@ if install_crash_handler is not None:
     install_crash_handler("VISION")
 
 from mchs_vision.config import CameraConfig, DetectorConfig, GeoOrigin
-from mchs_vision.events import EventThrottle
+from mchs_vision.events import EventThrottle, save_victim_evidence_snapshot
 from mchs_vision.geometry import Pose
 from mchs_vision.pipeline import VisionPipeline
 from mchs_vision.web_stream import LatestFrameStreamer
@@ -428,13 +428,36 @@ class MchsVisionNode(Node):
             return
         try:
             stamp = datetime.now().strftime("%H%M%S")
-            hazard_type = str(event.get("hazard_type") or "INC")
+            hazard_type = str(event.get("hazard_type") or "INC").upper()
             incident_id = str(event.get("incident_id") or "INC")
-            prefix = "VICTIM_" if hazard_type in ("VICTIM", "HUMAN") else ""
-            name = f"{prefix}{incident_id}_{stamp}.jpg"
-            path = os.path.join(self.incidents_dir, name)
-            if not cv2.imwrite(path, frame):
-                return
+
+            if hazard_type in ("VICTIM", "HUMAN"):
+                detection = (event.get("detections") or [{}])[0]
+                bbox_dict = detection.get("bbox_px") or {}
+                centroid = detection.get("centroid_px") or [
+                    frame.shape[1] / 2, frame.shape[0] / 2
+                ]
+                bbox = (
+                    int(bbox_dict.get("x", centroid[0] - 10)),
+                    int(bbox_dict.get("y", centroid[1] - 20)),
+                    int(bbox_dict.get("width", 20)),
+                    int(bbox_dict.get("height", 40)),
+                )
+                path = save_victim_evidence_snapshot(
+                    frame=frame,
+                    centroid_px=(int(centroid[0]), int(centroid[1])),
+                    bbox=bbox,
+                    pose=self._pose,
+                    output_dir=self.incidents_dir,
+                    incident_id=f"VICTIM_{incident_id}",
+                    timestamp=datetime.now(),
+                )
+                name = os.path.basename(path)
+            else:
+                name = f"{incident_id}_{stamp}.jpg"
+                path = os.path.join(self.incidents_dir, name)
+                if not cv2.imwrite(path, frame):
+                    return
             self._last_photo = f"reports/incidents/{name}"
             self._last_photo_time = now
             self._photo_count += 1

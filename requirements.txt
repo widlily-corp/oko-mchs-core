@@ -1,0 +1,5 @@
+customtkinter>=5.2
+Pillow>=9.0
+opencv-python>=4.5
+numpy>=1.21
+requests>=2.25

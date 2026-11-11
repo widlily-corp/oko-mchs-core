@@ -58,6 +58,9 @@ class VisionPipeline:
         self._min_area_m2 = {
             spec.name: spec.min_area_m2 for spec in self.config.classes
         }
+        self._max_area_m2 = {
+            spec.name: spec.max_area_m2 for spec in self.config.classes
+        }
 
         self._smooth: Dict[str, _SmoothState] = {}
         self._fps = 0.0
@@ -130,6 +133,10 @@ class VisionPipeline:
         if metrics.area_m2 < self._min_area_m2.get(detection.hazard_type, 0.0):
             # Мелкие блики, окна и фрагменты построек не публикуем как ЧС.
             return None
+        if metrics.area_m2 > self._max_area_m2.get(
+                detection.hazard_type, float("inf")):
+            # Оранжевый контейнер/крыша не должен становиться пострадавшим.
+            return None
 
         key = detection.track_id or f"{detection.hazard_type}-{id(detection)}"
         alpha = self.config.smoothing_alpha
@@ -154,6 +161,9 @@ class VisionPipeline:
             warning_m2=self.config.threat_warning_m2,
             critical_m2=self.config.threat_critical_m2,
         )
+        if detection.hazard_type in ("VICTIM", "HUMAN"):
+            # Человек — всегда CRITICAL, независимо от видимой площади.
+            level = "CRITICAL"
 
         return HazardRecord(
             detection=detection,

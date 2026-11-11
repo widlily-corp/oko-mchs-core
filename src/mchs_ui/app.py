@@ -102,6 +102,12 @@ import numpy as np
 import tkinter as tk
 from PIL import Image, ImageTk
 
+try:
+    from mchs_core.video_reporter import MissionVideoReporter, VideoReportConfig
+except ImportError:  # pragma: no cover
+    MissionVideoReporter = None
+    VideoReportConfig = None
+
 try:  # customtkinter есть на Windows-машине оператора
     import customtkinter as ctk
 except ImportError:  # pragma: no cover - подсказка при запуске без зависимости
@@ -835,6 +841,8 @@ class OkoMchsApp(ctk.CTk):
         # Состояние миссии
         self.started_at = time.time()
         self._log_queue: "queue.Queue[str]" = queue.Queue()
+        self._video_report_queue: "queue.Queue[tuple]" = queue.Queue()
+        self._video_report_busy = False
         self.mission_active = False
         self.phase = "ДЕЖУРСТВО НА БАЗЕ"
         self.altitude = 0.0
@@ -1289,11 +1297,15 @@ class OkoMchsApp(ctk.CTk):
         )
         self.btn_diag.pack(side="left", expand=True, fill="x", padx=2)
 
+        video_row = ctk.CTkFrame(buttons, fg_color="transparent")
+        video_row.pack(fill="x", pady=(4, 0))
         self.btn_video_rep = ctk.CTkButton(
-            row, text="🎬 ВИДЕОРАПОРТ", height=30, font=ctk.CTkFont(FONT_UI, 11, "bold"),
-            fg_color="#0D47A1", hover_color="#1565C0", command=self.compile_mission_video_report,
+            video_row, text="🎬 ВИДЕОРАПОРТ", height=30,
+            font=ctk.CTkFont(FONT_UI, 11, "bold"),
+            fg_color="#0D47A1", hover_color="#1565C0",
+            command=self.compile_mission_video_report,
         )
-        self.btn_video_rep.pack(side="left", expand=True, fill="x", padx=(2, 0))
+        self.btn_video_rep.pack(fill="x")
 
         ctk.CTkLabel(
             card,
@@ -1590,6 +1602,7 @@ class OkoMchsApp(ctk.CTk):
     def _capture_frame(self):
         """Кадр «как видит оператор»: видео/синтетика + тепловизор + HUD."""
         frame = self.video.snapshot()
+        live_frame = frame is not None
         if frame is None:
             width = max(640, self.cam_canvas.winfo_width())
             height = max(360, self.cam_canvas.winfo_height())
@@ -1600,7 +1613,8 @@ class OkoMchsApp(ctk.CTk):
             clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
             frame = cv2.applyColorMap(clahe.apply(gray), cv2.COLORMAP_INFERNO)
         if self.overlay:
-            frame = self._draw_hud(frame, frame.shape[1], frame.shape[0])
+            frame = self._draw_hud(frame, frame.shape[1], frame.shape[0],
+                                   include_telemetry=not live_frame)
         return frame
 
     @staticmethod
@@ -1742,6 +1756,96 @@ class OkoMchsApp(ctk.CTk):
             except OSError as error:
                 self.log(f"Не удалось открыть Проводник: {error}", level="WARNING")
         self.log(f"📂 Папка отчётов: {target}")
+
+    def compile_mission_video_report(self) -> None:
+        """🎬 Собирает тактический видеорапорт в фоне, не блокируя пульт."""
+        if self._video_report_busy:
+            self.log("🎬 Видеорапорт уже собирается — дождитесь завершения.")
+            return
+        if MissionVideoReporter is None:
+            self.log("Видеорапорт недоступен: не установлен mchs_core.video_reporter",
+                     level="ERROR")
+            return
+
+        frame = self._capture_frame()
+        if frame is None:
+            self.log("Нечего записывать: нет ни кадра с борта, ни резервного кадра.",
+                     level="WARNING")
+            return
+
+        snapshot = frame.copy()
+        protocol = dict(self.protocol or {})
+        self._video_report_busy = True
+        self.btn_video_rep.configure(state="disabled", text="🎬 СБОРКА…")
+        self.log("🎬 Формирую тактический видеорапорт…")
+
+        def worker() -> None:
+            try:
+                width, height = snapshot.shape[1], snapshot.shape[0]
+                reporter = MissionVideoReporter(VideoReportConfig(
+                    width=width, height=height, fps=10.0,
+                ))
+                incidents = []
+                if protocol:
+                    geo = protocol.get("target_geo") or {}
+                    coords = ""
+                    if geo.get("abs_x") is not None:
+                        coords = f"X={geo['abs_x']:.1f}, Y={geo['abs_y']:.1f}"
+                    incidents.append({
+                        "type": protocol.get("hazard_type", "ЧС"),
+                        "label": protocol.get("hazard_type", "Инцидент"),
+                        "coords": coords,
+                        "area": f"{protocol.get('area_sq_m', 0):.1f} м²",
+                    })
+                progress = 0.0 if self.scan_progress is None else self.scan_progress
+                stats = {
+                    "время_полёта": f"{max(0.0, time.time() - self.started_at):.0f} с",
+                    "прогресс_сканирования": f"{progress * 100:.0f}%",
+                    "кадров_обработано": self.frame_no,
+                    "инцидентов_в_отчёте": len(incidents),
+                    "статус": self.phase,
+                }
+                stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                self.video_dir.mkdir(parents=True, exist_ok=True)
+                path = self.video_dir / f"mission_report_{stamp}.mp4"
+                result = reporter.compile_report(
+                    frames=[snapshot], incidents=incidents, stats=stats,
+                    output_path=str(path),
+                )
+                self._video_report_queue.put(("ok", result))
+            except Exception as error:  # noqa: BLE001 - показываем оператору
+                self._video_report_queue.put(("error", f"{type(error).__name__}: {error}"))
+
+        threading.Thread(target=worker, daemon=True,
+                         name="mission-video-report").start()
+
+    def _poll_video_report(self) -> None:
+        """Забирает результат фоновой сборки видеорапорта в главном потоке."""
+        while True:
+            try:
+                status, payload = self._video_report_queue.get_nowait()
+            except queue.Empty:
+                return
+            self._video_report_busy = False
+            self.btn_video_rep.configure(state="normal", text="🎬 ВИДЕОРАПОРТ")
+            if status == "ok":
+                self.log(f"🎬 Тактический видеорапорт сформирован: {payload}")
+                if core_log_event:
+                    core_log_event("GCS_UI", "OPERATOR_ACTION", {
+                        "action": "VIDEO_REPORT", "status": "SUCCESS",
+                        "path": str(payload),
+                    })
+                try:
+                    if sys.platform == "win32" and hasattr(os, "startfile"):
+                        os.startfile(str(payload))  # type: ignore[attr-defined]
+                    else:
+                        subprocess.Popen(["xdg-open", str(payload)],
+                                         stdout=subprocess.DEVNULL,
+                                         stderr=subprocess.DEVNULL)
+                except Exception:
+                    pass
+            else:
+                self.log(f"Не удалось собрать видеорапорт: {payload}", level="ERROR")
 
     def _on_close(self) -> None:
         """Корректное закрытие пульта: дописать видео и остановить потоки."""
@@ -1963,6 +2067,7 @@ class OkoMchsApp(ctk.CTk):
 
             live = self._poll_live_state()
             self._drain_log_queue()
+            self._poll_video_report()
 
             protocol = self.watcher.poll()
             if protocol is not None:
@@ -2450,6 +2555,7 @@ class OkoMchsApp(ctk.CTk):
 
         offset_x = offset_y = 0
         frame = self.video.snapshot()
+        live_frame = frame is not None
         if frame is None:
             frame = self._render_synthetic_scene(width, height)
             frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_LINEAR)
@@ -2467,7 +2573,9 @@ class OkoMchsApp(ctk.CTk):
             frame = cv2.applyColorMap(clahe.apply(gray), cv2.COLORMAP_INFERNO)
 
         if self.overlay:
-            frame = self._draw_hud(frame, frame.shape[1], frame.shape[0])
+            # У живого MJPEG уже есть HUD ноды; не дублируем ALT/YAW/FPS.
+            frame = self._draw_hud(frame, frame.shape[1], frame.shape[0],
+                                   include_telemetry=not live_frame)
 
         # Кадр «как видит оператор» — используется снимками и записью.
         self.last_frame = frame.copy()
@@ -2575,7 +2683,8 @@ class OkoMchsApp(ctk.CTk):
             offset_y = int(math.sin(math.radians(angle)) * radius * 0.85)
             cv2.circle(frame, (cx + offset_x, cy + offset_y), max(2, radius // 8), (0, 90, 255), -1)
 
-    def _draw_hud(self, frame: np.ndarray, width: int, height: int) -> np.ndarray:
+    def _draw_hud(self, frame: np.ndarray, width: int, height: int,
+                  include_telemetry: bool = True) -> np.ndarray:
         """Тактический HUD: перекрестие, рамка детекции, служебные надписи."""
         result = frame.copy()
         height, width = result.shape[:2]
@@ -2588,10 +2697,11 @@ class OkoMchsApp(ctk.CTk):
         cv2.line(result, (cx - 16, cy), (cx + 16, cy), (0, 230, 255), 1)
         cv2.line(result, (cx, cy - 16), (cx, cy + 16), (0, 230, 255), 1)
 
-        # Верхняя плашка
-        mode = "THERMAL LWIR" if self.thermal else "OPTICAL 4K"
-        cv2.putText(result, f"REC {now_str()}  {mode}  {width}x{height}", (12, 22),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 230, 255), 1)
+        if include_telemetry:
+            # Верхняя плашка
+            mode = "THERMAL LWIR" if self.thermal else "OPTICAL 4K"
+            cv2.putText(result, f"REC {now_str()}  {mode}  {width}x{height}", (12, 22),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 230, 255), 1)
 
         # Рамка детекции
         if detected:
@@ -2606,8 +2716,9 @@ class OkoMchsApp(ctk.CTk):
                         (255, 255, 255), 1)
 
         # Нижняя строка
-        cv2.putText(result, f"ALT {self.altitude:.1f} m   BAT {self.battery:.0f}%   HDG {self.heading_deg:.0f}",
-                    (12, height - 14), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 220, 235), 1)
+        if include_telemetry:
+            cv2.putText(result, f"ALT {self.altitude:.1f} m   BAT {self.battery:.0f}%   HDG {self.heading_deg:.0f}",
+                        (12, height - 14), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 220, 235), 1)
         return result
 
 

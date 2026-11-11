@@ -61,6 +61,7 @@ run_all.bat
 
 ### 1. Запуск десктопного пульта оператора (Windows):
 ```bash
+python -m pip install -r requirements.txt
 cd src/mchs_ui
 python app.py
 ```
@@ -72,7 +73,7 @@ wsl.exe -d Ubuntu-22.04
 
 # Инициализация окружения ROS 2
 source /opt/ros/humble/setup.bash
-cd /root/oko-mchs-core
+cd /path/to/oko-mchs-core
 
 # Вариант А: Запуск полного комплекса (Gazebo + Vision + Pilot) в 1 клик
 bash scripts/run_all.sh

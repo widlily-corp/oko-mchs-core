@@ -30,7 +30,7 @@ def main():
     parser = argparse.ArgumentParser(description="Расчёт площади пожара по фото БПЛА")
     parser.add_argument("--input", "-i", required=True, help="Путь к входному изображению (JPG/PNG)")
     parser.add_argument("--altitude", "-a", type=float, default=22.0, help="Высота полёта БПЛА в метрах (по умолчанию: 22.0)")
-    parser.add_argument("--pitch", "-p", type=float, default=90.0, help="Угол наклона камеры в градусах (90 - надир, 45 - наклон)")
+    parser.add_argument("--pitch", "-p", type=float, default=45.0, help="Угол наклона камеры в градусах (45 - камера largedrone, 90 - надир)")
     parser.add_argument("--hfov", type=float, default=80.0, help="Горизонтальный угол обзора камеры в градусах")
     parser.add_argument("--output", "-o", default=None, help="Путь для сохранения размеченного изображения")
     parser.add_argument("--json", "-j", default=None, help="Путь для сохранения JSON отчёта с метриками")

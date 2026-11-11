@@ -16,7 +16,7 @@ run_all.bat        # или: powershell -File run_all.ps1
 Или вручную:
 
 ```bash
-wsl.exe -d Ubuntu-22.04 -e bash -c "cd /root/oko-mchs-core && MCHS_NO_UI=1 bash scripts/run_all.sh"
+wsl.exe -d Ubuntu-22.04 -e bash -c "cd /path/to/oko-mchs-core && MCHS_NO_UI=1 bash scripts/run_all.sh"
 # окно АРМ оператора (если не открылось само):
 python "\\wsl.localhost\Ubuntu-22.04\root\oko-mchs-core\src\mchs_ui\app.py"
 ```
@@ -89,7 +89,7 @@ NN%». Телеметрия (высота/скорость/координаты/
 2. **Из консоли WSL:**
 
 ```bash
-cd /root/oko-mchs-core
+cd /path/to/oko-mchs-core
 python3 src/mchs_simulation/scripts/arena_controller.py --hazard fire --x 20 --y -15
 python3 src/mchs_simulation/scripts/arena_controller.py --random   # разбросать все 4 очага
 python3 src/mchs_simulation/scripts/arena_controller.py --list     # список очагов
@@ -138,7 +138,7 @@ python3 src/mchs_simulation/scripts/arena_controller.py --list     # списо�
 Быстрая проверка после запуска:
 
 ```bash
-cd /root/oko-mchs-core
+cd /path/to/oko-mchs-core
 curl -s http://127.0.0.1:8080/state.json | head -c 400; echo
 tail -5 logs/stdout/pilot.log
 ls -la reports/incidents reports/photos reports/video 2>/dev/null
