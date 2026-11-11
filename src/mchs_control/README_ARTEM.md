@@ -127,3 +127,28 @@ ros2 topic pub --once /mchs/detection_event std_msgs/msg/String \
 ```bash
 python3 src/mchs_control/scripts/mchs_pilot_node.py --ros-args -p cruise_speed:=2.5 -p lanes:=3
 ```
+
+### Управление с пульта оператора
+
+Нода слушает топик `/mchs/mission_command` (`std_msgs/String`):
+
+| Команда | Действие |
+|---|---|
+| `RTL` | досрочный возврат на базу (аналог кнопки «АВАРИЙНЫЙ ВОЗВРАТ» на АРМ) |
+| `LAND` | посадка на месте, без возврата на базу |
+
+```bash
+ros2 topic pub --once /mchs/mission_command std_msgs/msg/String "{data: 'RTL'}"
+```
+
+### Совместимость с модулем зрения (ветка `feature/vision-roma`)
+
+Событие `/mchs/detection_event` принимается в полном формате модуля зрения:
+`incident_id`, `track_id`, `hazard_label_ru`, координаты WGS-84 (`lat` / `lon`),
+`distance_m`, `bearing_deg`, поза БПЛА `uav_pose` и массив `detections`.
+
+* если зрение передало `incident_id`, он попадает в протокол как есть — номера
+  инцидентов в системе совпадают;
+* готовые координаты WGS-84 используются вместо пересчёта из локальных метров;
+* при отсутствии абсолютных координат они вычисляются как позиция дрона плюс
+  смещение `rel_x` / `rel_y`.

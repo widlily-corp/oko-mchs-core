@@ -8,39 +8,41 @@
 Публикации:
     /mchs/detection_event    std_msgs/String      — JSON события ЧС
     /mchs/camera/annotated   sensor_msgs/Image    — кадр с тактическим HUD
-    HTTP :8080/stream        MJPEG                — прямой веб-эфир для Windows UI / браузера
 
 Запуск:
     source /opt/ros/humble/setup.bash
     python3 src/mchs_vision/scripts/mchs_vision_node.py
+
+Параметры (ROS 2):
+    camera_pitch_down_deg=45.0   # текущая камера mchs_drone/model.sdf
+    camera_pitch_down_deg=90.0   # строго надирная камера
+    fallback_altitude_m=8.0      # если odom.z < min_valid_altitude_m
+    enable_stream:=true          # HTTP-поток для АРМ на :8080
+    show_window:=true            # локальное окно OpenCV (WSLg)
 """
 
 from __future__ import annotations
 
-import os
-import sys
-
-# Настройки графической подсистемы WSLg
-if not os.environ.get('DISPLAY'):
-    os.environ['DISPLAY'] = ':0'
-if not os.environ.get('WAYLAND_DISPLAY'):
-    os.environ['WAYLAND_DISPLAY'] = 'wayland-0'
-if not os.environ.get('XDG_RUNTIME_DIR'):
-    os.environ['XDG_RUNTIME_DIR'] = '/mnt/wslg/runtime-dir'
-os.environ['LIBGL_ALWAYS_SOFTWARE'] = '1'
-os.environ['GALLIUM_DRIVER'] = 'llvmpipe'
-os.environ['MESA_LOADER_DRIVER_OVERRIDE'] = 'llvmpipe'
-
 import json
 import math
-import threading
-import time
+import os
+import sys
 from datetime import datetime, timezone
-from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Optional
 
+# WSLg: те же настройки, что в scripts/run_all.sh и старой ноде Руслана.
+# Должны быть выставлены ДО импорта cv2, иначе OpenCV выберет не тот бэкенд.
+for _env_name, _env_value in (
+    ("DISPLAY", ":0"),
+    ("WAYLAND_DISPLAY", "wayland-0"),
+    ("XDG_RUNTIME_DIR", "/mnt/wslg/runtime-dir"),
+    ("LIBGL_ALWAYS_SOFTWARE", "1"),
+    ("GALLIUM_DRIVER", "llvmpipe"),
+    ("MESA_LOADER_DRIVER_OVERRIDE", "llvmpipe"),
+):
+    os.environ.setdefault(_env_name, _env_value)
+
 import cv2
-import numpy as np
 import rclpy
 from cv_bridge import CvBridge
 from nav_msgs.msg import Odometry
@@ -57,73 +59,7 @@ from mchs_vision.config import CameraConfig, DetectorConfig, GeoOrigin
 from mchs_vision.events import EventThrottle
 from mchs_vision.geometry import Pose
 from mchs_vision.pipeline import VisionPipeline
-
-STREAM_PORT = 8080
-latest_jpeg_frame = None
-frame_lock = threading.Lock()
-
-
-class MchsStreamHandler(BaseHTTPRequestHandler):
-    """Веб-сервер MJPEG-трансляции для отображения в Windows АРМ Оператора и веб-браузере."""
-    def log_message(self, format, *args):
-        pass  # Отключаем спам в консоль
-
-    def do_GET(self):
-        global latest_jpeg_frame, frame_lock
-        if self.path in ('/', '/index.html'):
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/html; charset=utf-8')
-            self.end_headers()
-            html = """<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>ОКО МЧС — Камера БПЛА</title>
-<style>
-body { background: #0b0f19; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; margin: 0; padding: 20px; }
-h1 { color: #38bdf8; font-size: 22px; margin-bottom: 6px; letter-spacing: 1px; }
-.sub { color: #94a3b8; font-size: 14px; margin-bottom: 20px; }
-.frame-box { display: inline-block; padding: 6px; background: #1e293b; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); border: 1px solid #334155; }
-img { display: block; border-radius: 8px; max-width: 90vw; height: auto; }
-.badge { display: inline-block; padding: 4px 12px; margin-top: 14px; background: #065f46; color: #34d399; border-radius: 9999px; font-size: 13px; font-weight: bold; }
-</style></head>
-<body>
-<h1>ОКО МЧС — ПРЯМОЙ ЭФИР С БОРТОВОЙ КАМЕРЫ БПЛА</h1>
-<div class="sub">Gazebo 11 3D Simulation &bull; ROS 2 Topic: <code>/mchs/camera/image_raw</code> &bull; OpenCV AI Detection</div>
-<div class="frame-box"><img src="/stream" alt="Live Stream" /></div>
-<br><div class="badge">&bull; ТАКТИЧЕСКИЙ ЭФИР АКТИВЕН (30 FPS HD)</div>
-</body></html>"""
-            self.wfile.write(html.encode('utf-8'))
-        elif self.path == '/snapshot.jpg':
-            with frame_lock:
-                frame_data = latest_jpeg_frame
-            if frame_data:
-                self.send_response(200)
-                self.send_header('Content-Type', 'image/jpeg')
-                self.send_header('Content-Length', str(len(frame_data)))
-                self.end_headers()
-                self.wfile.write(frame_data)
-            else:
-                self.send_response(503)
-                self.end_headers()
-        elif self.path == '/stream':
-            self.send_response(200)
-            self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=frame')
-            self.end_headers()
-            while True:
-                with frame_lock:
-                    frame_data = latest_jpeg_frame
-                if frame_data is not None:
-                    try:
-                        self.wfile.write(b'--frame\r\n')
-                        self.send_header('Content-Type', 'image/jpeg')
-                        self.send_header('Content-Length', str(len(frame_data)))
-                        self.end_headers()
-                        self.wfile.write(frame_data)
-                        self.wfile.write(b'\r\n')
-                    except Exception:
-                        break
-                time.sleep(0.033)
-        else:
-            self.send_response(404)
-            self.end_headers()
+from mchs_vision.web_stream import LatestFrameStreamer
 
 
 def yaw_from_quaternion(x: float, y: float, z: float, w: float) -> float:
@@ -154,6 +90,10 @@ class MchsVisionNode(Node):
             "image_width", 1280).value)
         self.image_height = int(self.declare_parameter(
             "image_height", 720).value)
+        self.mount_forward_m = float(self.declare_parameter(
+            "camera_mount_forward_m", 0.12).value)
+        self.mount_up_m = float(self.declare_parameter(
+            "camera_mount_up_m", -0.05).value)
         self.fallback_altitude_m = float(self.declare_parameter(
             "fallback_altitude_m", 8.0).value)
         self.min_valid_altitude_m = float(self.declare_parameter(
@@ -174,11 +114,17 @@ class MchsVisionNode(Node):
         self.process_every_n = max(1, int(self.declare_parameter(
             "process_every_n", 1).value))
         self.show_window = bool(self.declare_parameter(
-            "show_window", True).value)
+            "show_window", False).value)
         self.publish_annotated = bool(self.declare_parameter(
             "publish_annotated", True).value)
+        self.enable_stream = bool(self.declare_parameter(
+            "enable_stream", True).value)
+        self.stream_port = int(self.declare_parameter(
+            "stream_port", 8080).value)
+        self.stream_quality = int(self.declare_parameter(
+            "stream_quality", 80).value)
         enabled_raw = str(self.declare_parameter(
-            "enabled_classes", "FIRE,SMOKE,OIL_SPILL,FLOOD,WASTE").value)
+            "enabled_classes", "FIRE,SMOKE,OIL_SPILL,FLOOD").value)
         enabled = tuple(name.strip().upper() for name in enabled_raw.split(",")
                         if name.strip())
         title = str(self.declare_parameter(
@@ -195,73 +141,86 @@ class MchsVisionNode(Node):
         self.pipeline = self._build_pipeline(self.image_width,
                                              self.image_height, enabled, title)
 
-        self.create_subscription(Image, self.image_topic,
-                                 self._image_callback,
-                                 qos_profile_sensor_data)
-        self.create_subscription(Odometry, self.odom_topic,
-                                 self._odom_callback,
-                                 qos_profile_sensor_data)
+        self.streamer: Optional[LatestFrameStreamer] = None
+        if self.enable_stream:
+            try:
+                self.streamer = LatestFrameStreamer(
+                    port=self.stream_port, quality=self.stream_quality
+                )
+            except OSError as exc:
+                self.get_logger().warn(
+                    f"HTTP-поток на порту {self.stream_port} не запущен: {exc}"
+                )
 
+        self.create_subscription(Image, self.image_topic, self._image_callback,
+                                 qos_profile_sensor_data)
+        self.create_subscription(Odometry, self.odom_topic, self._odom_callback,
+                                 10)
         self.event_publisher = self.create_publisher(String, self.event_topic, 10)
-        self.annotated_publisher = self.create_publisher(Image, self.annotated_topic, 10)
-
-        # Запуск фонового веб-стримера видеопотока на порту 8080
-        self.start_web_streamer()
+        self.annotated_publisher = self.create_publisher(
+            Image, self.annotated_topic, 10
+        )
 
         self.get_logger().info(
-            f"Нода зрения 'Око МЧС' запущена. "
-            f"Камера HFOV={self.hfov_deg}°, pitch={self.pitch_down_deg}°. "
-            f"Классы: {','.join(enabled)}. "
-            f"Окно GUI: {self.show_window}. "
-            f"Веб-трансляция: http://localhost:{STREAM_PORT}"
+            ">>> mchs_vision_node запущена: "
+            f"image={self.image_topic}, odom={self.odom_topic}, "
+            f"event={self.event_topic}, annotated={self.annotated_topic}"
         )
+        self.get_logger().info(
+            f">>> камера: {self.image_width}x{self.image_height}, "
+            f"HFOV={self.hfov_deg}°, наклон={self.pitch_down_deg}°, "
+            f"классы={','.join(enabled)}, min_hits={self.track_min_hits}"
+        )
+        if self.pitch_down_deg >= 89.0:
+            self.get_logger().info(">>> камера надирная (pitch=90°)")
+        else:
+            self.get_logger().info(
+                f">>> камера наклонена на {self.pitch_down_deg}° — "
+                "геопривязка учитывает перспективу"
+            )
+        if self.streamer is not None:
+            self.get_logger().info(
+                f">>> HTTP-поток для АРМ: http://127.0.0.1:{self.stream_port}/ "
+                f"(snapshot: /snapshot.jpg)"
+            )
 
-    def start_web_streamer(self):
-        try:
-            server = HTTPServer(('0.0.0.0', STREAM_PORT), MchsStreamHandler)
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
-            thread.start()
-        except Exception as e:
-            self.get_logger().warn(f'Не удалось запустить веб-стример на порту {STREAM_PORT}: {e}')
-
-    def _build_pipeline(self, width: int, height: int,
-                        enabled: tuple[str, ...],
+    def _build_pipeline(self, width: int, height: int, enabled,
                         title: str) -> VisionPipeline:
-        cam_cfg = CameraConfig(
-            width=width,
-            height=height,
+        camera = CameraConfig(
+            width=max(1, width),
+            height=max(1, height),
             hfov_deg=self.hfov_deg,
             pitch_down_deg=self.pitch_down_deg,
+            mount_forward_m=self.mount_forward_m,
+            mount_up_m=self.mount_up_m,
             max_range_m=self.max_range_m,
         )
-        det_cfg = DetectorConfig(
-            enabled=enabled,
-            track_min_hits=self.track_min_hits,
-            event_cooldown_s=self.event_cooldown_s,
-        )
-        origin = GeoOrigin(lat_deg=self.origin_lat, lon_deg=self.origin_lon)
-        throttle = EventThrottle(min_interval_s=self.event_min_interval_s)
+        detector_config = DetectorConfig(enabled=enabled,
+                                         track_min_hits=self.track_min_hits)
         return VisionPipeline(
-            camera=cam_cfg,
-            detector=det_cfg,
-            origin=origin,
-            throttle=throttle,
-            hud_title=title,
+            camera=camera,
+            detector_config=detector_config,
+            origin=GeoOrigin(lat=self.origin_lat, lon=self.origin_lon),
+            title=title,
+            throttle=EventThrottle(cooldown_s=self.event_cooldown_s,
+                                   min_interval_s=self.event_min_interval_s),
         )
 
+    # ------------------------------------------------------------------
+    # Подписки
+    # ------------------------------------------------------------------
     def _odom_callback(self, msg: Odometry) -> None:
         position = msg.pose.pose.position
         orientation = msg.pose.pose.orientation
-        yaw = yaw_from_quaternion(
-            orientation.x, orientation.y, orientation.z, orientation.w
-        )
-
+        yaw = yaw_from_quaternion(orientation.x, orientation.y,
+                                  orientation.z, orientation.w)
         z = float(position.z)
         if z < self.min_valid_altitude_m:
             if not self._warned_altitude:
                 self.get_logger().warn(
                     f"odom.z={z:.2f} м ниже порога {self.min_valid_altitude_m} м; "
-                    f"использую высоту {self.fallback_altitude_m} м."
+                    f"использую высоту {self.fallback_altitude_m} м. "
+                    "Проверьте плагин высоты Gazebo."
                 )
                 self._warned_altitude = True
             z = self.fallback_altitude_m
@@ -281,7 +240,7 @@ class MchsVisionNode(Node):
 
         try:
             frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
-        except Exception as exc:
+        except Exception as exc:  # cv_bridge может кидать разные типы
             self.get_logger().error(f"cv_bridge: {exc}")
             return
 
@@ -291,42 +250,48 @@ class MchsVisionNode(Node):
         height, width = frame.shape[:2]
         if (width != self.pipeline.camera.width
                 or height != self.pipeline.camera.height):
+            self.get_logger().warn(
+                f"Размер кадра {width}x{height} не совпал с настройками "
+                f"{self.pipeline.camera.width}x{self.pipeline.camera.height}; "
+                "перестраиваю проектор."
+            )
             self.pipeline = self._build_pipeline(
                 width, height, self.pipeline.config.enabled, self.pipeline.title
             )
 
+        if not self._pose_received:
+            self.get_logger().warn(
+                "Одометрия ещё не получена: использую высоту "
+                f"{self.fallback_altitude_m} м и координаты (0, 0).",
+                throttle_duration_sec=5.0,
+            )
+
         timestamp = self._stamp_to_datetime(msg)
-        draw = True  # Всегда рисуем HUD для трансляции и окна
+        draw = (self.publish_annotated or self.show_window
+                or self.streamer is not None)
         result = self.pipeline.process(frame, self._pose, timestamp, draw=draw)
 
-        # Рассылка событий ЧС (для автопилота и ЦУКС)
         for event in result.events:
             self.event_publisher.publish(
                 String(data=json.dumps(event, ensure_ascii=False))
             )
             self._log_event(event)
 
-        # Публикация в ROS топик
-        if self.publish_annotated and result.annotated is not None:
-            annotated = self.bridge.cv2_to_imgmsg(result.annotated, encoding="bgr8")
+        if self.streamer is not None:
+            self.streamer.update(result.annotated)
+
+        if self.publish_annotated:
+            annotated = self.bridge.cv2_to_imgmsg(result.annotated,
+                                                  encoding="bgr8")
             annotated.header = msg.header
             self.annotated_publisher.publish(annotated)
 
-        # Обновление веб-трансляции на :8080
-        global latest_jpeg_frame, frame_lock
-        out_frame = result.annotated if result.annotated is not None else frame
-        try:
-            ret, jpeg = cv2.imencode('.jpg', out_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
-            if ret:
-                with frame_lock:
-                    latest_jpeg_frame = jpeg.tobytes()
-        except Exception:
-            pass
-
-        # Локальное окно OpenCV (WSLg)
-        if self.show_window and result.annotated is not None:
+        if self.show_window:
             self._show_window(result.annotated)
 
+    # ------------------------------------------------------------------
+    # Вспомогательное
+    # ------------------------------------------------------------------
     @staticmethod
     def _stamp_to_datetime(msg: Image) -> datetime:
         stamp = msg.header.stamp
@@ -355,7 +320,6 @@ class MchsVisionNode(Node):
         try:
             if not self._window_created:
                 cv2.namedWindow("MCHS OPTICAL RECON", cv2.WINDOW_NORMAL)
-                cv2.resizeWindow("MCHS OPTICAL RECON", 960, 540)
                 self._window_created = True
             cv2.imshow("MCHS OPTICAL RECON", frame)
             cv2.waitKey(1)
@@ -366,6 +330,9 @@ class MchsVisionNode(Node):
             self.show_window = False
 
     def destroy_node(self) -> bool:
+        if self.streamer is not None:
+            self.streamer.stop()
+            self.streamer = None
         if self._window_created:
             try:
                 cv2.destroyAllWindows()

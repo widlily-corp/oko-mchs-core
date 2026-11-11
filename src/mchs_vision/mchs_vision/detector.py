@@ -192,11 +192,14 @@ class HazardDetector:
             mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
         frame_area = float(width * height)
+        min_area = float(spec.min_area_px)
+        if self.config.scale_min_area_with_resolution:
+            min_area *= frame_area / float(self.config.reference_frame_pixels)
         candidates: List[Dict] = []
 
         for contour in contours:
             area = float(cv2.contourArea(contour))
-            if area < spec.min_area_px:
+            if area < min_area:
                 continue
             if area > self.config.max_area_ratio * frame_area:
                 continue
@@ -216,7 +219,7 @@ class HazardDetector:
 
             roi_mask = mask[y:y + bh, x:x + bw]
             pixel_count = int(cv2.countNonZero(roi_mask))
-            if pixel_count < spec.min_area_px:
+            if pixel_count < min_area:
                 continue
 
             mean_hsv = cv2.mean(hsv[y:y + bh, x:x + bw], mask=roi_mask)[:3]

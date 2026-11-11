@@ -170,6 +170,11 @@ def build_incident_protocol(
     area_sq_m: float = 35.2,
     target_geo: dict | None = None,
     confidence: float = 0.95,
+    incident_id: str | None = None,
+    hazard_label_ru: str | None = None,
+    track_id: str = "",
+    distance_m: float | None = None,
+    bearing_deg: float | None = None,
     drone_telemetry: dict | None = None,
     flight_summary: dict | None = None,
     drone_id: str = "MCHS-UAV-04",
@@ -193,16 +198,24 @@ def build_incident_protocol(
     rel_y = float(geo.get("rel_y", 0.0))
 
     short_name, description = hazard_info(haze_code)
-    latitude, longitude = local_offset_to_gps(abs_x, abs_y)
+    # Зрение может передать готовые координаты WGS-84 — доверяем им.
+    event_lat = geo.get("lat", geo.get("latitude"))
+    event_lon = geo.get("lon", geo.get("longitude"))
+    if event_lat is not None and event_lon is not None:
+        latitude, longitude = round(float(event_lat), 7), round(float(event_lon), 7)
+    else:
+        latitude, longitude = local_offset_to_gps(abs_x, abs_y)
 
     return {
-        "incident_id": make_incident_id(now),
+        "incident_id": incident_id or make_incident_id(now),
         "timestamp": now.isoformat(timespec="seconds"),
         "timestamp_msk": now.astimezone(MSK).strftime("%d.%m.%Y %H:%M:%S"),
         "station": station,
         "hazard_type": short_name,
         "hazard_code": haze_code,
         "hazard_description": description,
+        "hazard_label_ru": hazard_label_ru or description,
+        "track_id": track_id,
         "threat_level": threat,
         "estimated_area_sq_m": round(float(area_sq_m), 1),
         "target_geo": {
@@ -212,6 +225,8 @@ def build_incident_protocol(
             "rel_y": round(rel_y, 2),
             "latitude": latitude,
             "longitude": longitude,
+            "distance_m": round(float(distance_m), 2) if distance_m is not None else None,
+            "bearing_deg": round(float(bearing_deg), 1) if bearing_deg is not None else None,
         },
         "confidence": round(float(confidence), 3),
         "drone_telemetry": {
@@ -301,6 +316,11 @@ def generate_incident_protocol(
     area_sq_m: float = 35.2,
     target_geo: dict | None = None,
     confidence: float = 0.95,
+    incident_id: str | None = None,
+    hazard_label_ru: str | None = None,
+    track_id: str = "",
+    distance_m: float | None = None,
+    bearing_deg: float | None = None,
     drone_telemetry: dict | None = None,
     flight_summary: dict | None = None,
     drone_id: str = "MCHS-UAV-04",
@@ -314,6 +334,11 @@ def generate_incident_protocol(
         area_sq_m=area_sq_m,
         target_geo=target_geo,
         confidence=confidence,
+        incident_id=incident_id,
+        hazard_label_ru=hazard_label_ru,
+        track_id=track_id,
+        distance_m=distance_m,
+        bearing_deg=bearing_deg,
         drone_telemetry=drone_telemetry,
         flight_summary=flight_summary,
         drone_id=drone_id,

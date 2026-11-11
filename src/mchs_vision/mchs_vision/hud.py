@@ -1,6 +1,7 @@
 """Тактический HUD аннотированного видеопотока для АРМ оператора.
 
-HUD рисуется на кадре 640×480 и масштабируется вместе с изображением.
+HUD масштабируется под разрешение кадра: на 640×480 рисуется базовыми
+размерами, на 1280×720 — удвоенными, чтобы текст оставался читаемым.
 Все надписи — латиницей: стандартные шрифты OpenCV не поддерживают
 кириллицу, а подключать FreeType ради демо-оверлея избыточно.
 """
@@ -35,6 +36,22 @@ class TacticalHUD:
         self._class_colors = {
             spec.name: spec.color_bgr for spec in (classes or ())
         }
+        self._ui = 1.0
+
+    # ------------------------------------------------------------------
+    # Масштабирование интерфейса
+    # ------------------------------------------------------------------
+    def _px(self, value: float) -> int:
+        """Пиксели с учётом разрешения (база — 640×480)."""
+        return max(1, int(round(value * self._ui)))
+
+    def _fs(self, value: float) -> float:
+        """Масштаб шрифта с учётом разрешения."""
+        return value * self._ui
+
+    def _th(self, value: int) -> int:
+        """Толщина линии с учётом разрешения."""
+        return max(1, int(round(value * self._ui)))
 
     def draw(self, frame: np.ndarray, records: List[HazardRecord], pose: Pose,
              fps: float, timestamp: str = "",
@@ -42,6 +59,7 @@ class TacticalHUD:
              ) -> np.ndarray:
         out = frame.copy()
         height, width = out.shape[:2]
+        self._ui = max(0.75, min(3.0, width / 640.0))
 
         self._draw_top_bar(out, width, pose, fps, timestamp, title)
         self._draw_bottom_bar(out, height, width, records)
@@ -77,45 +95,53 @@ class TacticalHUD:
         cv2.rectangle(overlay, (x1, y1), (x2, y2), PANEL_COLOR, -1)
         cv2.addWeighted(overlay, alpha, image, 1.0 - alpha, 0.0, image)
 
-    @staticmethod
-    def _text(image: np.ndarray, text: str, org: Tuple[int, int],
+    def _text(self, image: np.ndarray, text: str, org: Tuple[int, int],
               scale: float = 0.45, color: Tuple[int, int, int] = TEXT_COLOR,
               thickness: int = 1) -> None:
         x, y = org
-        cv2.putText(image, text, (x + 1, y + 1), cv2.FONT_HERSHEY_SIMPLEX,
-                    scale, (0, 0, 0), thickness + 1, cv2.LINE_AA)
+        cv2.putText(image, text, (x + self._px(1), y + self._px(1)),
+                    cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0),
+                    thickness + self._th(1), cv2.LINE_AA)
         cv2.putText(image, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX,
                     scale, color, thickness, cv2.LINE_AA)
 
     def _draw_top_bar(self, image: np.ndarray, width: int, pose: Pose,
                       fps: float, timestamp: str, title: str) -> None:
-        self._panel(image, (0, 0, width, 52), alpha=0.66)
-        cv2.line(image, (0, 52), (width, 52), ACCENT_COLOR, 1)
+        bar_h = self._px(52)
+        self._panel(image, (0, 0, width, bar_h), alpha=0.66)
+        cv2.line(image, (0, bar_h), (width, bar_h), ACCENT_COLOR, self._th(1))
 
-        self._text(image, f"{title}", (10, 18),
-                   scale=0.48, color=ACCENT_COLOR, thickness=1)
+        self._text(image, title, (self._px(10), self._px(18)),
+                   scale=self._fs(0.48), color=ACCENT_COLOR,
+                   thickness=self._th(1))
         fps_text = f"{fps:5.1f}" if fps > 0 else "  -- "
         self._text(
             image,
             f"ALT {pose.z_m:5.1f} M   YAW {pose.yaw_deg:05.1f}   FPS {fps_text}",
-            (10, 40), scale=0.42,
+            (self._px(10), self._px(40)), scale=self._fs(0.42),
+            thickness=self._th(1),
         )
 
         blink = int(time.time() * 2) % 2 == 0
         dot_color = (0, 0, 255) if blink else (0, 0, 110)
-        cv2.circle(image, (width - 128, 16), 5, dot_color, -1)
-        self._text(image, "REC", (width - 118, 21), scale=0.42,
-                   color=(240, 240, 240))
+        cv2.circle(image, (width - self._px(128), self._px(16)),
+                   self._px(5), dot_color, -1)
+        self._text(image, "REC", (width - self._px(118), self._px(21)),
+                   scale=self._fs(0.42), color=(240, 240, 240),
+                   thickness=self._th(1))
 
         if timestamp:
-            self._text(image, timestamp, (width - 118, 42), scale=0.38,
-                       color=(180, 190, 200))
+            self._text(image, timestamp,
+                       (width - self._px(118), self._px(42)),
+                       scale=self._fs(0.38), color=(180, 190, 200),
+                       thickness=self._th(1))
 
     def _draw_bottom_bar(self, image: np.ndarray, height: int, width: int,
                          records: List[HazardRecord]) -> None:
-        self._panel(image, (0, height - 34, width, height), alpha=0.66)
-        cv2.line(image, (0, height - 34), (width, height - 34),
-                 ACCENT_COLOR, 1)
+        bar_h = self._px(34)
+        self._panel(image, (0, height - bar_h, width, height), alpha=0.66)
+        cv2.line(image, (0, height - bar_h), (width, height - bar_h),
+                 ACCENT_COLOR, self._th(1))
 
         if records:
             primary = max(records,
@@ -124,42 +150,56 @@ class TacticalHUD:
             color = THREAT_COLORS.get(primary.threat_level, (0, 0, 255))
             text = (f"HAZARD DETECTED: {primary.hazard_type} "
                     f"[{primary.threat_level}]  {primary.smoothed_area_m2:.1f} M2")
-            cv2.circle(image, (14, height - 17), 5, color, -1)
-            self._text(image, text, (26, height - 11), scale=0.46,
-                       color=color, thickness=1)
+            cv2.circle(image, (self._px(14), height - self._px(17)),
+                       self._px(5), color, -1)
+            self._text(image, text, (self._px(26), height - self._px(11)),
+                       scale=self._fs(0.46), color=color,
+                       thickness=self._th(1))
         else:
-            cv2.circle(image, (14, height - 17), 5, (0, 220, 120), -1)
-            self._text(image, "STATUS: PATROL / SCANNING", (26, height - 11),
-                       scale=0.46, color=(0, 220, 120))
+            cv2.circle(image, (self._px(14), height - self._px(17)),
+                       self._px(5), (0, 220, 120), -1)
+            self._text(image, "STATUS: PATROL / SCANNING",
+                       (self._px(26), height - self._px(11)),
+                       scale=self._fs(0.46), color=(0, 220, 120),
+                       thickness=self._th(1))
 
-        self._text(image, f"TRACKS {len(records)}", (width - 92, height - 11),
-                   scale=0.40, color=(190, 200, 210))
+        self._text(image, f"TRACKS {len(records)}",
+                   (width - self._px(92), height - self._px(11)),
+                   scale=self._fs(0.40), color=(190, 200, 210),
+                   thickness=self._th(1))
 
-    def _draw_legend(self, image: np.ndarray, height: int, records: List[HazardRecord]
-                     ) -> None:
+    def _draw_legend(self, image: np.ndarray, height: int,
+                     records: List[HazardRecord]) -> None:
         counts = {}
         for record in records:
             counts[record.hazard_type] = counts.get(record.hazard_type, 0) + 1
 
         names = [("FIRE", "FIRE"), ("SMOKE", "SMOKE"),
                  ("OIL", "OIL_SPILL"), ("FLOOD", "FLOOD")]
-        base_y = height - 44
-        x = 10
+        base_y = height - self._px(44)
+        x = self._px(10)
         for label, key in names:
             color = self._class_colors.get(key, (200, 200, 200))
-            cv2.rectangle(image, (x, base_y - 8), (x + 8, base_y), color, -1)
+            cv2.rectangle(image, (x, base_y - self._px(8)),
+                          (x + self._px(8), base_y), color, -1)
             text = f"{label} {counts.get(key, 0)}"
-            self._text(image, text, (x + 12, base_y), scale=0.34,
-                       color=(205, 212, 220))
-            x += 12 + int(6.2 * len(text)) + 10
+            self._text(image, text, (x + self._px(12), base_y),
+                       scale=self._fs(0.34), color=(205, 212, 220),
+                       thickness=self._th(1))
+            x += self._px(12) + int(6.2 * len(text) * self._ui) + self._px(10)
 
     def _draw_reticle(self, image: np.ndarray, width: int, height: int) -> None:
         cx, cy = width // 2, height // 2
-        cv2.line(image, (cx - 22, cy), (cx - 8, cy), ACCENT_COLOR, 1)
-        cv2.line(image, (cx + 8, cy), (cx + 22, cy), ACCENT_COLOR, 1)
-        cv2.line(image, (cx, cy - 22), (cx, cy - 8), ACCENT_COLOR, 1)
-        cv2.line(image, (cx, cy + 8), (cx, cy + 22), ACCENT_COLOR, 1)
-        cv2.circle(image, (cx, cy), 2, ACCENT_COLOR, -1)
+        near, far, dot = self._px(8), self._px(22), self._px(2)
+        cv2.line(image, (cx - far, cy), (cx - near, cy), ACCENT_COLOR,
+                 self._th(1))
+        cv2.line(image, (cx + near, cy), (cx + far, cy), ACCENT_COLOR,
+                 self._th(1))
+        cv2.line(image, (cx, cy - far), (cx, cy - near), ACCENT_COLOR,
+                 self._th(1))
+        cv2.line(image, (cx, cy + near), (cx, cy + far), ACCENT_COLOR,
+                 self._th(1))
+        cv2.circle(image, (cx, cy), dot, ACCENT_COLOR, -1)
 
     def _draw_scale_bar(self, image: np.ndarray, width: int, height: int,
                         pose: Pose) -> None:
@@ -170,37 +210,46 @@ class TacticalHUD:
         if gsd_x <= 0:
             return
 
-        target_px = 90
+        target_px = 90 * self._ui
         candidates = [2, 5, 10, 20, 50, 100, 200]
         length_m = min(candidates, key=lambda value: abs(value / gsd_x - target_px))
         bar_px = int(round(length_m / gsd_x))
-        if bar_px < 12 or bar_px > width * 0.5:
+        if bar_px < self._px(12) or bar_px > width * 0.5:
             return
 
-        x2 = width - 14
+        x2 = width - self._px(14)
         x1 = x2 - bar_px
-        y = height - 58
-        cv2.line(image, (x1, y), (x2, y), TEXT_COLOR, 3)
-        cv2.line(image, (x1, y - 5), (x1, y + 5), TEXT_COLOR, 2)
-        cv2.line(image, (x2, y - 5), (x2, y + 5), TEXT_COLOR, 2)
-        self._text(image, f"{length_m} M", (x1, y - 9), scale=0.36,
-                   color=TEXT_COLOR)
+        y = height - self._px(58)
+        cv2.line(image, (x1, y), (x2, y), TEXT_COLOR, self._th(3))
+        cv2.line(image, (x1, y - self._px(5)), (x1, y + self._px(5)),
+                 TEXT_COLOR, self._th(2))
+        cv2.line(image, (x2, y - self._px(5)), (x2, y + self._px(5)),
+                 TEXT_COLOR, self._th(2))
+        self._text(image, f"{length_m} M", (x1, y - self._px(9)),
+                   scale=self._fs(0.36), color=TEXT_COLOR,
+                   thickness=self._th(1))
 
     def _draw_compass(self, image: np.ndarray, width: int, height: int,
                       pose: Pose) -> None:
-        cx, cy, radius = width - 34, 88, 18
-        cv2.circle(image, (cx, cy), radius, (210, 220, 230), 1, cv2.LINE_AA)
+        cx, cy, radius = width - self._px(34), self._px(88), self._px(18)
+        cv2.circle(image, (cx, cy), radius, (210, 220, 230), self._th(1),
+                   cv2.LINE_AA)
         dx, dy = self.projector.north_screen_direction(pose)
         norm = math.hypot(dx, dy)
         if norm < 1e-6:
             dx, dy, norm = 0.0, -1.0, 1.0
         dx, dy = dx / norm, dy / norm
-        tip = (int(cx + dx * (radius - 3)), int(cy + dy * (radius - 3)))
-        tail = (int(cx - dx * (radius - 7)), int(cy - dy * (radius - 7)))
-        cv2.arrowedLine(image, tail, tip, (0, 80, 255), 2, tipLength=0.35)
-        self._text(image, "N", (cx + int(dx * (radius + 7)) - 3,
-                                cy + int(dy * (radius + 7)) + 4), scale=0.38,
-                   color=(0, 120, 255))
+        tip = (int(cx + dx * (radius - self._px(3))),
+               int(cy + dy * (radius - self._px(3))))
+        tail = (int(cx - dx * (radius - self._px(7))),
+                int(cy - dy * (radius - self._px(7))))
+        cv2.arrowedLine(image, tail, tip, (0, 80, 255), self._th(2),
+                        tipLength=0.35)
+        self._text(image, "N",
+                   (cx + int(dx * (radius + self._px(7))) - self._px(3),
+                    cy + int(dy * (radius + self._px(7))) + self._px(4)),
+                   scale=self._fs(0.38), color=(0, 120, 255),
+                   thickness=self._th(1))
 
     # ------------------------------------------------------------------
     # Рамки детекций
@@ -209,8 +258,8 @@ class TacticalHUD:
                         pose: Pose, primary: bool) -> None:
         x, y, bw, bh = record.detection.bbox
         color = self._class_colors.get(record.hazard_type, (0, 255, 0))
-        thickness = 2 if primary else 1
-        corner = max(7, min(18, min(bw, bh) // 4))
+        thickness = self._th(2 if primary else 1)
+        corner = max(self._px(7), min(self._px(18), min(bw, bh) // 4))
 
         cv2.rectangle(image, (x, y), (x + bw, y + bh), color, thickness)
         for px, py, sx, sy in (
@@ -219,37 +268,49 @@ class TacticalHUD:
             (x, y + bh, 1, -1),
             (x + bw, y + bh, -1, -1),
         ):
-            cv2.line(image, (px, py), (px + sx * corner, py), color, 3)
-            cv2.line(image, (px, py), (px, py + sy * corner), color, 3)
+            cv2.line(image, (px, py), (px + sx * corner, py), color,
+                     self._th(3))
+            cv2.line(image, (px, py), (px, py + sy * corner), color,
+                     self._th(3))
 
         label = (f"{record.hazard_type} {record.smoothed_area_m2:5.1f} M2 "
                  f"{record.confidence * 100:3.0f}%")
-        scale = 0.42
-        (text_w, text_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX,
-                                              scale, 1)
-        label_y = max(0, y - text_h - 7)
-        label_x = min(max(2, x), image.shape[1] - text_w - 10)
+        scale = self._fs(0.42)
+        (text_w, text_h), _ = cv2.getTextSize(
+            label, cv2.FONT_HERSHEY_SIMPLEX, scale, self._th(1)
+        )
+        label_y = max(0, y - text_h - self._px(7))
+        label_x = min(max(self._px(2), x),
+                      image.shape[1] - text_w - self._px(10))
         cv2.rectangle(image, (label_x, label_y),
-                      (label_x + text_w + 8, label_y + text_h + 6),
+                      (label_x + text_w + self._px(8),
+                       label_y + text_h + self._px(6)),
                       (10, 12, 16), -1)
         cv2.rectangle(image, (label_x, label_y),
-                      (label_x + text_w + 8, label_y + text_h + 6),
-                      color, 1)
-        self._text(image, label, (label_x + 4, label_y + text_h + 2),
-                   scale=scale, color=color)
+                      (label_x + text_w + self._px(8),
+                       label_y + text_h + self._px(6)),
+                      color, self._th(1))
+        self._text(image, label,
+                   (label_x + self._px(4), label_y + text_h + self._px(2)),
+                   scale=scale, color=color, thickness=self._th(1))
 
         threat_color = THREAT_COLORS.get(record.threat_level, (255, 255, 255))
         line2 = (f"[{record.threat_level}]  X {record.abs_xy[0]:+.1f}  "
                  f"Y {record.abs_xy[1]:+.1f}  {record.metrics.distance_m:.1f} M")
-        line2_y = min(image.shape[0] - 40, y + bh + 14)
-        (w2, h2), _ = cv2.getTextSize(line2, cv2.FONT_HERSHEY_SIMPLEX, 0.36, 1)
-        line2_x = min(max(2, x), image.shape[1] - w2 - 10)
-        cv2.rectangle(image, (line2_x, line2_y - h2 - 3),
-                      (line2_x + w2 + 8, line2_y + 3), (10, 12, 16), -1)
-        self._text(image, line2, (line2_x + 4, line2_y), scale=0.36,
-                   color=threat_color)
+        line2_y = min(image.shape[0] - self._px(40), y + bh + self._px(14))
+        (w2, h2), _ = cv2.getTextSize(line2, cv2.FONT_HERSHEY_SIMPLEX,
+                                      self._fs(0.36), self._th(1))
+        line2_x = min(max(self._px(2), x),
+                      image.shape[1] - w2 - self._px(10))
+        cv2.rectangle(image, (line2_x, line2_y - h2 - self._px(3)),
+                      (line2_x + w2 + self._px(8), line2_y + self._px(3)),
+                      (10, 12, 16), -1)
+        self._text(image, line2, (line2_x + self._px(4), line2_y),
+                   scale=self._fs(0.36), color=threat_color,
+                   thickness=self._th(1))
 
         cx, cy = record.detection.centroid_px
         cv2.drawMarker(image, (int(cx), int(cy)), color,
-                       markerType=cv2.MARKER_CROSS, markerSize=10,
-                       thickness=1)
+                       markerType=cv2.MARKER_CROSS,
+                       markerSize=self._px(10),
+                       thickness=self._th(1))

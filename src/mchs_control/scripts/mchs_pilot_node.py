@@ -23,6 +23,7 @@
 ------------
 
     подписки:  /mchs/detection_event (std_msgs/String, JSON) — тревога от зрения
+               /mchs/mission_command (std_msgs/String)        — команды оператора RTL/LAND
                /mchs/odom            (nav_msgs/Odometry)      — высота и позиция
     публикует: /mchs/cmd_vel         (geometry_msgs/Twist)    — уставки скорости
                /mchs/mission_status  (std_msgs/String, JSON)  — статус для АРМ
@@ -148,6 +149,12 @@ class Detection:
     target_geo: dict = field(default_factory=dict)
     confidence: float = 0.0
     timestamp: str = ""
+    # Поля, которые дополнительно передаёт модуль зрения (mchs_vision).
+    incident_id: str = ""
+    track_id: str = ""
+    label_ru: str = ""
+    uav_pose: dict = field(default_factory=dict)
+    detections_count: int = 0
 
     @property
     def is_alarm(self) -> bool:
@@ -186,6 +193,9 @@ class Detection:
             if "x" in payload and "y" in payload:
                 geo = {"abs_x": payload["x"], "abs_y": payload["y"]}
 
+        uav_pose = payload.get("uav_pose")
+        detections = payload.get("detections")
+
         return cls(
             hazard_type=hazard,
             threat_level=threat,
@@ -193,6 +203,11 @@ class Detection:
             target_geo=dict(geo),
             confidence=_to_float(payload.get("confidence", 0.0)),
             timestamp=str(payload.get("timestamp", "")),
+            incident_id=str(payload.get("incident_id", "") or ""),
+            track_id=str(payload.get("track_id", "") or ""),
+            label_ru=str(payload.get("hazard_label_ru", "") or ""),
+            uav_pose=dict(uav_pose) if isinstance(uav_pose, dict) else {},
+            detections_count=len(detections) if isinstance(detections, list) else 0,
         )
 
 
@@ -568,6 +583,28 @@ class FlightPlanner:
             self._saved_state = None
             self._start_phase(Phase.RTL)
 
+    # -- команды оператора ---------------------------------------------------
+
+    def request_rtl(self) -> bool:
+        """Досрочный возврат на базу по команде оператора.
+
+        Возвращает True, если команда принята. Из посадки и завершённой
+        миссии возврат не запрашивается — дрон уже на земле.
+        """
+        if self.phase in (Phase.LAND, Phase.FINISHED):
+            return False
+        self._saved_state = None
+        self._start_phase(Phase.RTL)
+        return True
+
+    def request_land(self) -> bool:
+        """Команда «садиться сейчас»: миссия прерывается, дрон снижается."""
+        if self.phase is Phase.FINISHED:
+            return False
+        self._saved_state = None
+        self._start_phase(Phase.LAND)
+        return True
+
     # -- телеметрия ----------------------------------------------------------
 
     def stats(self) -> dict:
@@ -712,6 +749,11 @@ def _save_protocol(planner: FlightPlanner, args: argparse.Namespace) -> None:
         area_sq_m=detection.area_sq_m if detection else args.area,
         target_geo=_resolve_target_geo(detection, planner.x, planner.y),
         confidence=detection.confidence if detection else 0.0,
+        incident_id=detection.incident_id if detection else None,
+        hazard_label_ru=detection.label_ru if detection else None,
+        track_id=detection.track_id if detection else "",
+        distance_m=(detection.target_geo.get("distance_m") if detection else None),
+        bearing_deg=(detection.target_geo.get("bearing_deg") if detection else None),
         drone_telemetry={
             "altitude_m": planner.z,
             "battery_percent": planner.battery_pct,
@@ -770,6 +812,7 @@ def run_ros(args: argparse.Namespace) -> int:
             self.publisher = self.create_publisher(Twist, args.cmd_vel_topic, 10)
             self.status_publisher = self.create_publisher(String, args.status_topic, 10)
             self.create_subscription(String, args.detection_topic, self.on_detection, 10)
+            self.create_subscription(String, args.command_topic, self.on_command, 10)
             self.create_subscription(Odometry, args.odom_topic, self.on_odom, 10)
 
             self.last_tick_time: Optional[float] = None
@@ -806,9 +849,10 @@ def run_ros(args: argparse.Namespace) -> int:
                 self.get_logger().warn(f"Непонятное событие ЧС: {msg.data!r}")
                 return
             self.pending_detection = detection
+            incident = f", инцидент {detection.incident_id}" if detection.incident_id else ""
             self.get_logger().warn(
                 f"!!! {detection.hazard_type}/{detection.threat_level} "
-                f"({detection.area_sq_m:.1f} м², уверенность {detection.confidence:.2f})"
+                f"({detection.area_sq_m:.1f} м², уверенность {detection.confidence:.2f}{incident})"
             )
 
         def on_odom(self, msg: Odometry) -> None:
@@ -816,6 +860,22 @@ def run_ros(args: argparse.Namespace) -> int:
             position = msg.pose.pose.position
             self.odom_altitude = float(position.z)
             self.odom_position = (float(position.x), float(position.y))
+
+        def on_command(self, msg: String) -> None:
+            """Команды оператора: RTL (возврат) и LAND (посадка на месте)."""
+            command = msg.data.strip().upper()
+            if command in ("RTL", "RETURN", "ABORT"):
+                if self.planner.request_rtl():
+                    self.get_logger().warn("!!! Команда оператора: возврат на базу (RTL).")
+                else:
+                    self.get_logger().info("Команда RTL не требуется: дрон уже садится/сел.")
+            elif command in ("LAND", "STOP"):
+                if self.planner.request_land():
+                    self.get_logger().warn("!!! Команда оператора: посадка на месте.")
+                else:
+                    self.get_logger().info("Команда LAND не требуется: миссия уже завершена.")
+            else:
+                self.get_logger().info(f"Команда {command!r} не поддерживается (есть RTL и LAND).")
 
         # -- такт управления -----------------------------------------------
 
@@ -871,6 +931,11 @@ def run_ros(args: argparse.Namespace) -> int:
                 area_sq_m=detection.area_sq_m if detection else 0.0,
                 target_geo=_resolve_target_geo(detection, self.planner.x, self.planner.y),
                 confidence=detection.confidence if detection else 0.0,
+                incident_id=detection.incident_id if detection else None,
+                hazard_label_ru=detection.label_ru if detection else None,
+                track_id=detection.track_id if detection else "",
+                distance_m=(detection.target_geo.get("distance_m") if detection else None),
+                bearing_deg=(detection.target_geo.get("bearing_deg") if detection else None),
                 drone_telemetry={
                     "altitude_m": self._altitude(),
                     "battery_percent": self.planner.battery_pct,
@@ -970,6 +1035,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--cmd-vel-topic", default="/mchs/cmd_vel", help="топик уставок скорости")
     parser.add_argument("--odom-topic", default="/mchs/odom", help="топик одометрии")
     parser.add_argument("--status-topic", default="/mchs/mission_status", help="топик статуса миссии")
+    parser.add_argument("--command-topic", default="/mchs/mission_command", help="топик команд оператора")
     return parser.parse_args(argv)
 
 

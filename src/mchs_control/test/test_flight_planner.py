@@ -327,6 +327,102 @@ def test_protocol_text_contains_signature_line():
     assert protocol["incident_id"] in text
 
 
+def test_rich_detection_event_from_vision():
+    """Событие модуля зрения: ID инцидента, WGS-84, track_id, поза и массив очагов."""
+    payload = {
+        "schema_version": "1.0",
+        "event_id": "EVT-20261111-000001",
+        "incident_id": "INC-2026-007",
+        "timestamp": "2026-11-11T12:00:00",
+        "hazard_type": "FIRE",
+        "hazard_label_ru": "Очаг лесного пожара",
+        "threat_level": "CRITICAL",
+        "area_sq_m": 64.2,
+        "confidence": 0.96,
+        "track_id": "TRK-3",
+        "target_geo": {
+            "abs_x": 14.8, "abs_y": -5.2,
+            "rel_x": 4.8, "rel_y": -1.2,
+            "lat": 53.42011, "lon": 58.99022,
+            "distance_m": 5.0, "bearing_deg": 104.2,
+        },
+        "uav_pose": {"x": 10.0, "y": -4.0, "z": 8.0, "yaw_deg": 90.0},
+        "detections": [{"hazard_type": "FIRE"}, {"hazard_type": "SMOKE"}],
+    }
+
+    detection = Detection.from_payload(json.dumps(payload, ensure_ascii=False))
+
+    assert detection is not None
+    assert detection.incident_id == "INC-2026-007"
+    assert detection.track_id == "TRK-3"
+    assert detection.label_ru == "Очаг лесного пожара"
+    assert detection.detections_count == 2
+    assert detection.uav_pose["z"] == 8.0
+    assert detection.abs_position == (14.8, -5.2)
+
+
+def test_protocol_uses_incident_id_and_wgs84_from_vision():
+    """В протокол попадают ID инцидента, метка и координаты WGS-84 от зрения."""
+    protocol = generate_incident_protocol(
+        hazard_code="FIRE",
+        incident_id="INC-2026-007",
+        hazard_label_ru="Очаг лесного пожара",
+        track_id="TRK-3",
+        distance_m=5.0,
+        bearing_deg=104.2,
+        target_geo={
+            "abs_x": 14.8, "abs_y": -5.2,
+            "rel_x": 4.8, "rel_y": -1.2,
+            "lat": 53.42011, "lon": 58.99022,
+        },
+        out_dir=None,
+        verbose=False,
+    )
+
+    assert protocol["incident_id"] == "INC-2026-007"
+    assert protocol["hazard_label_ru"] == "Очаг лесного пожара"
+    assert protocol["track_id"] == "TRK-3"
+    assert protocol["target_geo"]["latitude"] == 53.42011
+    assert protocol["target_geo"]["longitude"] == 58.99022
+    assert protocol["target_geo"]["distance_m"] == 5.0
+    assert protocol["target_geo"]["bearing_deg"] == 104.2
+
+
+def test_operator_rtl_command_aborts_patrol():
+    """Команда оператора RTL прерывает патруль, и дрон всё равно приходит на базу."""
+    planner = FlightPlanner(lanes=2)
+    for _ in range(200):  # 20 с: взлёт и часть патруля
+        planner.tick(DT)
+    assert planner.phase is Phase.PATROL_GRID
+
+    assert planner.request_rtl() is True
+    assert planner.phase is Phase.RTL
+
+    while not planner.is_finished and planner.elapsed < 600.0:
+        planner.tick(DT)
+
+    assert planner.is_finished
+    assert math.hypot(planner.x, planner.y) < 1.5, "после RTL дрон должен быть на базе"
+    assert planner.request_rtl() is False, "после посадки команда RTL не принимается"
+
+
+def test_operator_land_command_lands_on_the_spot():
+    """Команда LAND сажает дрон там, где он находится, не дожидаясь конца маршрута."""
+    planner = FlightPlanner(lanes=3)
+    for _ in range(200):
+        planner.tick(DT)
+    assert planner.phase is Phase.PATROL_GRID
+    distance_before = math.hypot(planner.x, planner.y)
+
+    assert planner.request_land() is True
+    while not planner.is_finished and planner.elapsed < 600.0:
+        planner.tick(DT)
+
+    assert planner.is_finished
+    assert planner.z <= 0.2
+    assert abs(math.hypot(planner.x, planner.y) - distance_before) < 1.0, "дрон должен сесть на месте"
+
+
 if __name__ == "__main__":
     failures = 0
     tests = [(name, obj) for name, obj in sorted(globals().items()) if name.startswith("test_") and callable(obj)]
