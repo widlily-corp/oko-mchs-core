@@ -19,10 +19,11 @@ def generate_launch_description():
     models_path = os.path.join(pkg_dir, 'models')
 
     current_model_path = os.environ.get('GAZEBO_MODEL_PATH', '')
+    standard_paths = "/usr/share/gazebo-11/models:/usr/share/gazebo/models"
     if current_model_path:
-        new_model_path = f"{models_path}:{current_model_path}"
+        new_model_path = f"{models_path}:{current_model_path}:{standard_paths}"
     else:
-        new_model_path = f"{models_path}:/usr/share/gazebo-11/models"
+        new_model_path = f"{models_path}:{standard_paths}"
 
     return LaunchDescription([
         SetEnvironmentVariable(
