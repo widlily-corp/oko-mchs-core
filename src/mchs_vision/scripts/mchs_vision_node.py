@@ -175,6 +175,8 @@ class MchsVisionNode(Node):
             "protocol_cooldown_s", 15.0).value)
         self.battery_percent = float(self.declare_parameter(
             "battery_percent", 96.0).value)
+        self.arena_half_size_m = float(self.declare_parameter(
+            "arena_half_size_m", 105.0).value)
 
         self.bridge = CvBridge()
         self._pose = Pose(x_m=0.0, y_m=0.0, z_m=self.fallback_altitude_m)
@@ -601,6 +603,17 @@ class MchsVisionNode(Node):
         result = self.pipeline.process(frame, self._pose, timestamp, draw=draw)
 
         for event in result.events:
+            geo = event.get("target_geo") or {}
+            try:
+                event_x = float(geo.get("abs_x"))
+                event_y = float(geo.get("abs_y"))
+            except (TypeError, ValueError):
+                event_x = event_y = None
+            if event_x is not None and (
+                    abs(event_x) > self.arena_half_size_m
+                    or abs(event_y) > self.arena_half_size_m):
+                # Координата вне арены — артефакт дальней кромки/фона.
+                continue
             self.event_publisher.publish(
                 String(data=json.dumps(event, ensure_ascii=False))
             )
@@ -609,7 +622,6 @@ class MchsVisionNode(Node):
                 lvl = "ERROR" if event.get("threat_level") == "CRITICAL" else "WARNING"
                 log_event("VISION", "HAZARD_DETECTED", event, level=lvl)
             if is_new:
-                geo = event.get("target_geo") or {}
                 self._last_event = {
                     "incident_id": event.get("incident_id"),
                     "hazard_type": event.get("hazard_type"),
@@ -625,7 +637,11 @@ class MchsVisionNode(Node):
                     self._incident_counts.get(hazard_class, 0) + 1)
                 if str(event.get("threat_level") or "").upper() in (
                         "WARNING", "CRITICAL"):
-                    self._save_incident_photo(event, result.annotated)
+                    # Фотодоказательство — только для очага, подтверждённого
+                    # рядом с координатой из config/hazards.json.
+                    hazard_key, _ = self._match_hazard(event)
+                    if hazard_key is not None:
+                        self._save_incident_photo(event, result.annotated)
             self._maybe_write_protocol(event)
 
         if self.streamer is not None:
