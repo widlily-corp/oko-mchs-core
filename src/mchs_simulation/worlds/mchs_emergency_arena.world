@@ -3907,9 +3907,9 @@
       </collision>
       </link>
     </model>
-    <!-- Кастомный дрон МЧС (патрулирует на высоте 8 м) -->
+    <!-- Крупный дрон МЧС largedrone (STL by Studio Mechanik), патрулирует на высоте 22 м -->
     <include>
-      <uri>model://mchs_drone</uri>
+      <uri>model://largedrone</uri>
       <pose>0 0 22.0 0 0 0</pose>
     </include>
   </world>
