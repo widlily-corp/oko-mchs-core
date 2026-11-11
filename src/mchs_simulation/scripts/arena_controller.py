@@ -50,6 +50,16 @@ HAZARD_MODELS = {
         'name': 'waste_hazard',
         'default_z': 0.4,
         'label': 'Токсичные отходы / бочки'
+    },
+    'human': {
+        'name': 'person_standing',
+        'default_z': 0.0,
+        'label': 'Пострадавший (человек в сигнальном жилете)'
+    },
+    'victim': {
+        'name': 'person_standing',
+        'default_z': 0.0,
+        'label': 'Пострадавший (человек в сигнальном жилете)'
     }
 }
 
@@ -336,7 +346,7 @@ def apply_positions(raw: str) -> int:
 
 def main():
     parser = argparse.ArgumentParser(description="MCHS Dynamic Arena Hazard Controller")
-    parser.add_argument('--hazard', choices=['fire', 'oil', 'flood', 'waste'], help="Тип ЧС для перемещения")
+    parser.add_argument('--hazard', choices=['fire', 'oil', 'flood', 'waste', 'human', 'victim'], help="Тип ЧС для перемещения")
     parser.add_argument('--x', type=float, help="Координата X (вперед от базы)")
     parser.add_argument('--y', type=float, help="Координата Y (влево/вправо)")
     parser.add_argument('--z', type=float, default=None, help="Высота Z")

@@ -32,6 +32,7 @@ DEFAULT_HAZARD_POSES = {
     "OIL": (-58.0, 30.0, 0.02),
     "FLOOD": (45.0, -56.0, 0.02),
     "WASTE": (68.0, -72.0, 0.4),
+    "HUMAN": (15.0, -22.0, 0.0),
 }
 
 
@@ -543,6 +544,17 @@ def build_world():
                  name="waste_debris_1")
     add(waste.xml())
 
+    # 5. Пострадавший / человек в сигнальном жилете
+    human_pose = hazard_poses.get("HUMAN") or hazard_poses.get("VICTIM", (15.0, -22.0, 0.0))
+    hx, hy, hz = human_pose[0], human_pose[1], human_pose[2]
+    add(f'''    <!-- 5. Пострадавший (человек) в сигнальном жилете -->
+    <include>
+      <name>person_standing</name>
+      <uri>model://person_standing</uri>
+      <pose>{hx:.4f} {hy:.4f} {hz:.4f} 0 0 0</pose>
+    </include>
+''')
+
     # --- Дрон МЧС -----------------------------------------------------------
     add('''    <!-- Крупный дрон МЧС largedrone (STL by Studio Mechanik), высота 22 м -->
     <include>
@@ -556,8 +568,13 @@ def build_world():
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Генератор мира ЧС Gazebo")
+    parser.add_argument("--output", "-o", default=None, help="Путь для сохранения .world файла")
+    args = parser.parse_args()
+
     world_xml = build_world()
-    world_path = os.path.abspath(WORLD_PATH)
+    world_path = os.path.abspath(args.output if args.output else WORLD_PATH)
     tmp_path = world_path + ".tmp"
     try:
         os.makedirs(os.path.dirname(world_path), exist_ok=True)
