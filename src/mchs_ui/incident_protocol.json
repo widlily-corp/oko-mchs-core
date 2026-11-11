@@ -1,15 +1,19 @@
 {
-  "incident_id": "INC-2026-1234",
-  "timestamp": "2026-11-11T12:13:54.770680",
+  "incident_id": "INC-2026-001",
+  "timestamp": "2026-11-11T14:24:00",
   "station": "ЦУКС ГУ МЧС России",
   "hazard_type": "ОЧАГ ЛЕСНОГО ПОЖАРА",
   "threat_level": "CRITICAL",
   "estimated_area_sq_m": 64.2,
-  "drone_telemetry": {
-    "altitude_m": 0.0,
-    "battery_percent": 96,
-    "grid_x_m": 16.6,
-    "grid_y_m": 20.3
+  "target_geo": {
+    "abs_x": 42.0,
+    "abs_y": 28.0
   },
-  "recommended_response": "Направить 2 пожарные автоцистерны АЦ-40, оповестить диспетчера района."
+  "drone_telemetry": {
+    "altitude_m": 22.0,
+    "battery_percent": 96,
+    "grid_x_m": 42.0,
+    "grid_y_m": 28.0
+  },
+  "recommended_response": "Направить 2 пожарные автоцистерны АЦ-40, автолестницу АЛ-30, личный состав 8 чел."
 }
