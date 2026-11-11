@@ -1,0 +1,215 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="mchs_emergency_arena">
+    <!-- Освещение сцены (Дневное солнце) -->
+    <include>
+      <uri>model://sun</uri>
+    </include>
+
+    <!-- Базовый рельеф / Земная поверхность -->
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+
+    <!-- Физика симуляции -->
+    <physics type="ode">
+      <max_step_size>0.002</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>500</real_time_update_rate>
+    </physics>
+
+    <!-- Базовая станция / Вертодром старта БПЛА (Точка 0, 0) -->
+    <model name="mchs_base_helipad">
+      <static>true</static>
+      <pose>0 0 0.005 0 0 0</pose>
+      <link name="link">
+        <!-- Посадочная площадка МЧС -->
+        <visual name="pad_surface">
+          <geometry><cylinder><radius>1.8</radius><length>0.01</length></cylinder></geometry>
+          <material>
+            <ambient>0.2 0.25 0.3 1</ambient>
+            <diffuse>0.2 0.25 0.3 1</diffuse>
+          </material>
+        </visual>
+        <!-- Внешний сигнальный круг -->
+        <visual name="pad_ring">
+          <pose>0 0 0.006 0 0 0</pose>
+          <geometry><cylinder><radius>1.7</radius><length>0.01</length></cylinder></geometry>
+          <material>
+            <ambient>1.0 0.45 0.0 1</ambient>
+            <diffuse>1.0 0.45 0.0 1</diffuse>
+          </material>
+        </visual>
+        <visual name="pad_inner">
+          <pose>0 0 0.007 0 0 0</pose>
+          <geometry><cylinder><radius>1.5</radius><length>0.01</length></cylinder></geometry>
+          <material>
+            <ambient>0.15 0.15 0.18 1</ambient>
+            <diffuse>0.15 0.15 0.18 1</diffuse>
+          </material>
+        </visual>
+        <!-- Навигационная вышка связи -->
+        <visual name="antenna_mast">
+          <pose>-2.2 -2.2 1.5 0 0 0</pose>
+          <geometry><cylinder><radius>0.06</radius><length>3.0</length></cylinder></geometry>
+          <material><ambient>0.8 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ======================================================== -->
+    <!-- 4 МОДУЛЬНЫХ ОБЪЕКТА ЧС (ПЕРЕМЕЩАЮТСЯ ЧЕРЕЗ arena_controller) -->
+    <!-- ======================================================== -->
+
+    <!-- 1. ОЧАГ ЛЕСНОГО ПОЖАРА (FIRE HAZARD) -->
+    <model name="fire_hazard">
+      <static>true</static>
+      <pose>14.0 0.0 0.2 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><cylinder><radius>1.8</radius><length>0.4</length></cylinder></geometry>
+        </collision>
+        <!-- Зона выгорания / угли -->
+        <visual name="charred_ground">
+          <geometry><cylinder><radius>2.2</radius><length>0.05</length></cylinder></geometry>
+          <material>
+            <ambient>0.1 0.05 0.02 1</ambient>
+            <diffuse>0.15 0.08 0.03 1</diffuse>
+          </material>
+        </visual>
+        <!-- Ядро открытого огня (Эмиссионное пламя) -->
+        <visual name="fire_flame_core">
+          <pose>0 0 0.4 0 0 0</pose>
+          <geometry><cylinder><radius>1.4</radius><length>0.8</length></cylinder></geometry>
+          <material>
+            <ambient>1.0 0.2 0.0 1</ambient>
+            <diffuse>1.0 0.4 0.0 1</diffuse>
+            <emissive>1.0 0.35 0.0 1</emissive>
+          </material>
+        </visual>
+        <!-- Вершина пламени -->
+        <visual name="fire_flame_tip">
+          <pose>0 0 0.9 0 0 0</pose>
+          <geometry><cylinder><radius>0.8</radius><length>0.7</length></cylinder></geometry>
+          <material>
+            <ambient>1.0 0.7 0.0 1</ambient>
+            <diffuse>1.0 0.8 0.0 1</diffuse>
+            <emissive>1.0 0.75 0.0 1</emissive>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 2. РАЗЛИВ НЕФТЕПРОДУКТОВ / ТОПЛИВА (OIL SPILL HAZARD) -->
+    <model name="oil_spill_hazard">
+      <static>true</static>
+      <pose>8.0 10.0 0.02 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><cylinder><radius>2.4</radius><length>0.04</length></cylinder></geometry>
+        </collision>
+        <!-- Пятно темного вязкого мазута -->
+        <visual name="oil_slick">
+          <geometry><cylinder><radius>2.4</radius><length>0.04</length></cylinder></geometry>
+          <material>
+            <ambient>0.03 0.03 0.04 1</ambient>
+            <diffuse>0.05 0.05 0.06 1</diffuse>
+            <specular>0.6 0.6 0.7 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 3. ЗОНА ЗАТОПЛЕНИЯ / ПАВОДКА (FLOOD HAZARD) -->
+    <model name="flood_hazard">
+      <static>true</static>
+      <pose>-8.0 10.0 0.02 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><cylinder><radius>2.8</radius><length>0.04</length></cylinder></geometry>
+        </collision>
+        <!-- Водная гладь / выход реки -->
+        <visual name="water_pool">
+          <geometry><cylinder><radius>2.8</radius><length>0.04</length></cylinder></geometry>
+          <material>
+            <ambient>0.1 0.4 0.85 0.85</ambient>
+            <diffuse>0.15 0.5 0.9 0.85</diffuse>
+            <specular>0.9 0.9 1.0 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 4. НЕСАНКЦИОНИРОВАННАЯ СВАЛКА / ТОКСИЧНЫЕ БОЧКИ (WASTE HAZARD) -->
+    <model name="waste_hazard">
+      <static>true</static>
+      <pose>12.0 -9.0 0.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>2.2 2.2 0.9</size></box></geometry>
+        </collision>
+        <!-- Бочка 1 (Токсично-желтая) -->
+        <visual name="drum_1">
+          <pose>-0.4 -0.3 0 0 0 0</pose>
+          <geometry><cylinder><radius>0.3</radius><length>0.85</length></cylinder></geometry>
+          <material><ambient>0.9 0.75 0.0 1</ambient><diffuse>0.9 0.8 0.0 1</diffuse></material>
+        </visual>
+        <!-- Бочка 2 (Сигнально-оранжевая) -->
+        <visual name="drum_2">
+          <pose>0.4 -0.2 0 0 0 0</pose>
+          <geometry><cylinder><radius>0.3</radius><length>0.85</length></cylinder></geometry>
+          <material><ambient>0.85 0.3 0.0 1</ambient><diffuse>0.9 0.35 0.0 1</diffuse></material>
+        </visual>
+        <!-- Бочка 3 (Поваленная) -->
+        <visual name="drum_3">
+          <pose>0.0 0.4 -0.15 1.570796 0 0.5</pose>
+          <geometry><cylinder><radius>0.3</radius><length>0.85</length></cylinder></geometry>
+          <material><ambient>0.2 0.5 0.2 1</ambient><diffuse>0.25 0.6 0.25 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Окружение: Деревья лесного массива -->
+    <model name="tree_1">
+      <static>true</static>
+      <pose>6.0 4.0 1.5 0 0 0</pose>
+      <link name="link">
+        <visual name="trunk"><geometry><cylinder><radius>0.18</radius><length>3.0</length></cylinder></geometry><material><ambient>0.35 0.2 0.1 1</ambient><diffuse>0.35 0.2 0.1 1</diffuse></material></visual>
+        <visual name="crown"><pose>0 0 1.6 0 0 0</pose><geometry><sphere><radius>1.3</radius></sphere></geometry><material><ambient>0.1 0.45 0.1 1</ambient><diffuse>0.1 0.5 0.1 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="tree_2">
+      <static>true</static>
+      <pose>10.0 -4.5 1.5 0 0 0</pose>
+      <link name="link">
+        <visual name="trunk"><geometry><cylinder><radius>0.18</radius><length>3.0</length></cylinder></geometry><material><ambient>0.35 0.2 0.1 1</ambient><diffuse>0.35 0.2 0.1 1</diffuse></material></visual>
+        <visual name="crown"><pose>0 0 1.6 0 0 0</pose><geometry><sphere><radius>1.4</radius></sphere></geometry><material><ambient>0.12 0.5 0.12 1</ambient><diffuse>0.12 0.55 0.12 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="tree_3">
+      <static>true</static>
+      <pose>16.0 6.0 1.5 0 0 0</pose>
+      <link name="link">
+        <visual name="trunk"><geometry><cylinder><radius>0.2</radius><length>3.0</length></cylinder></geometry><material><ambient>0.35 0.2 0.1 1</ambient><diffuse>0.35 0.2 0.1 1</diffuse></material></visual>
+        <visual name="crown"><pose>0 0 1.7 0 0 0</pose><geometry><sphere><radius>1.5</radius></sphere></geometry><material><ambient>0.08 0.42 0.08 1</ambient><diffuse>0.08 0.45 0.08 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="tree_4">
+      <static>true</static>
+      <pose>4.0 -8.0 1.5 0 0 0</pose>
+      <link name="link">
+        <visual name="trunk"><geometry><cylinder><radius>0.16</radius><length>3.0</length></cylinder></geometry><material><ambient>0.35 0.2 0.1 1</ambient><diffuse>0.35 0.2 0.1 1</diffuse></material></visual>
+        <visual name="crown"><pose>0 0 1.5 0 0 0</pose><geometry><sphere><radius>1.2</radius></sphere></geometry><material><ambient>0.1 0.46 0.1 1</ambient><diffuse>0.1 0.5 0.1 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- Включение кастомного дрона МЧС -->
+    <include>
+      <uri>model://mchs_drone</uri>
+      <pose>0 0 0.12 0 0 0</pose>
+    </include>
+  </world>
+</sdf>

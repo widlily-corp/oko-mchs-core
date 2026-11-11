@@ -1,0 +1,190 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <model name="mchs_drone">
+    <static>false</static>
+    <pose>0 0 0.15 0 0 0</pose>
+
+    <link name="base_link">
+      <inertial>
+        <mass>2.4</mass>
+        <pose>0 0 0 0 0 0</pose>
+        <inertia>
+          <ixx>0.035</ixx><ixy>0.0</ixy><ixz>0.0</ixz>
+          <iyy>0.035</iyy><iyz>0.0</iyz><izz>0.065</izz>
+        </inertia>
+      </inertial>
+
+      <!-- Центральный фюзеляж БПЛА МЧС (Оранжевый сигнальный корпус) -->
+      <collision name="body_collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <box><size>0.28 0.28 0.12</size></box>
+        </geometry>
+      </collision>
+      <visual name="body_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <box><size>0.28 0.28 0.12</size></box>
+        </geometry>
+        <material>
+          <ambient>1.0 0.42 0.0 1.0</ambient>
+          <diffuse>1.0 0.45 0.05 1.0</diffuse>
+          <specular>0.8 0.8 0.8 1.0</specular>
+        </material>
+      </visual>
+
+      <!-- Верхний купол навигационного блока (GPS / Маяк) -->
+      <visual name="top_dome_visual">
+        <pose>0 0 0.08 0 0 0</pose>
+        <geometry>
+          <sphere><radius>0.06</radius></sphere>
+        </geometry>
+        <material>
+          <ambient>0.95 0.95 0.95 1.0</ambient>
+          <diffuse>0.9 0.9 0.9 1.0</diffuse>
+          <emissive>0.2 0.2 0.4 1.0</emissive>
+        </material>
+      </visual>
+
+      <!-- Карбоновые лучи (X-образная схема 650 мм) -->
+      <!-- Луч 1: Передний правый -->
+      <visual name="arm_fr">
+        <pose>0.16 0.16 0 0 0 0.785398</pose>
+        <geometry><cylinder><radius>0.014</radius><length>0.24</length></cylinder></geometry>
+        <material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.15 0.15 0.15 1</diffuse></material>
+      </visual>
+      <!-- Луч 2: Передний левый -->
+      <visual name="arm_fl">
+        <pose>0.16 -0.16 0 0 0 -0.785398</pose>
+        <geometry><cylinder><radius>0.014</radius><length>0.24</length></cylinder></geometry>
+        <material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.15 0.15 0.15 1</diffuse></material>
+      </visual>
+      <!-- Луч 3: Задний правый -->
+      <visual name="arm_rr">
+        <pose>-0.16 0.16 0 0 0 -0.785398</pose>
+        <geometry><cylinder><radius>0.014</radius><length>0.24</length></cylinder></geometry>
+        <material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.15 0.15 0.15 1</diffuse></material>
+      </visual>
+      <!-- Луч 4: Задний левый -->
+      <visual name="arm_rl">
+        <pose>-0.16 -0.16 0 0 0 0.785398</pose>
+        <geometry><cylinder><radius>0.014</radius><length>0.24</length></cylinder></geometry>
+        <material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.15 0.15 0.15 1</diffuse></material>
+      </visual>
+
+      <!-- Моторные капсулы и винты (4 шт) -->
+      <visual name="motor_fr">
+        <pose>0.24 0.24 0.03 0 0 0</pose>
+        <geometry><cylinder><radius>0.03</radius><length>0.06</length></cylinder></geometry>
+        <material><ambient>0.2 0.2 0.2 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
+      </visual>
+      <visual name="prop_fr">
+        <pose>0.24 0.24 0.065 0 0 0</pose>
+        <geometry><cylinder><radius>0.16</radius><length>0.005</length></cylinder></geometry>
+        <material><ambient>0.9 0.9 0.9 0.6</ambient><diffuse>0.9 0.9 0.9 0.6</diffuse></material>
+      </visual>
+
+      <visual name="motor_fl">
+        <pose>0.24 -0.24 0.03 0 0 0</pose>
+        <geometry><cylinder><radius>0.03</radius><length>0.06</length></cylinder></geometry>
+        <material><ambient>0.2 0.2 0.2 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
+      </visual>
+      <visual name="prop_fl">
+        <pose>0.24 -0.24 0.065 0 0 0</pose>
+        <geometry><cylinder><radius>0.16</radius><length>0.005</length></cylinder></geometry>
+        <material><ambient>0.9 0.9 0.9 0.6</ambient><diffuse>0.9 0.9 0.9 0.6</diffuse></material>
+      </visual>
+
+      <visual name="motor_rr">
+        <pose>-0.24 0.24 0.03 0 0 0</pose>
+        <geometry><cylinder><radius>0.03</radius><length>0.06</length></cylinder></geometry>
+        <material><ambient>0.2 0.2 0.2 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
+      </visual>
+      <visual name="prop_rr">
+        <pose>-0.24 0.24 0.065 0 0 0</pose>
+        <geometry><cylinder><radius>0.16</radius><length>0.005</length></cylinder></geometry>
+        <material><ambient>0.9 0.9 0.9 0.6</ambient><diffuse>0.9 0.9 0.9 0.6</diffuse></material>
+      </visual>
+
+      <visual name="motor_rl">
+        <pose>-0.24 -0.24 0.03 0 0 0</pose>
+        <geometry><cylinder><radius>0.03</radius><length>0.06</length></cylinder></geometry>
+        <material><ambient>0.2 0.2 0.2 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
+      </visual>
+      <visual name="prop_rl">
+        <pose>-0.24 -0.24 0.065 0 0 0</pose>
+        <geometry><cylinder><radius>0.16</radius><length>0.005</length></cylinder></geometry>
+        <material><ambient>0.9 0.9 0.9 0.6</ambient><diffuse>0.9 0.9 0.9 0.6</diffuse></material>
+      </visual>
+
+      <!-- Посадочные лыжи (Шасси) -->
+      <visual name="skid_right">
+        <pose>0 0.15 -0.09 1.570796 0 0</pose>
+        <geometry><cylinder><radius>0.008</radius><length>0.36</length></cylinder></geometry>
+        <material><ambient>0.1 0.1 0.1 1</ambient><diffuse>0.1 0.1 0.1 1</diffuse></material>
+      </visual>
+      <visual name="skid_left">
+        <pose>0 -0.15 -0.09 1.570796 0 0</pose>
+        <geometry><cylinder><radius>0.008</radius><length>0.36</length></cylinder></geometry>
+        <material><ambient>0.1 0.1 0.1 1</ambient><diffuse>0.1 0.1 0.1 1</diffuse></material>
+      </visual>
+      <collision name="skids_collision">
+        <pose>0 0 -0.09 0 0 0</pose>
+        <geometry><box><size>0.36 0.32 0.02</size></box></geometry>
+      </collision>
+
+      <!-- Подвес курсовой камеры (направлена вперед и вниз под углом 45 градусов) -->
+      <visual name="gimbal_visual">
+        <pose>0.10 0 -0.05 0 0.785398 0</pose>
+        <geometry><sphere><radius>0.04</radius></sphere></geometry>
+        <material>
+          <ambient>0.05 0.05 0.05 1</ambient>
+          <diffuse>0.1 0.1 0.1 1</diffuse>
+        </material>
+      </visual>
+
+      <!-- Сенсор камеры ROS 2 -->
+      <sensor type="camera" name="mchs_camera">
+        <!-- Позиция: нос дрона, наклон 45 градусов вниз (pitch = +0.785 рад) -->
+        <pose>0.12 0 -0.05 0 0.785398 0</pose>
+        <always_on>true</always_on>
+        <update_rate>30.0</update_rate>
+        <camera name="mchs_cam">
+          <horizontal_fov>1.3962634</horizontal_fov> <!-- 80 градусов -->
+          <image>
+            <width>1280</width>
+            <height>720</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>300.0</far>
+          </clip>
+        </camera>
+        <plugin name="mchs_camera_controller" filename="libgazebo_ros_camera.so">
+          <ros>
+            <namespace>/mchs</namespace>
+            <remapping>image_raw:=camera/image_raw</remapping>
+            <remapping>camera_info:=camera/camera_info</remapping>
+          </ros>
+          <camera_name>camera</camera_name>
+          <frame_name>camera_optical_link</frame_name>
+        </plugin>
+      </sensor>
+    </link>
+
+    <!-- Плагин кинематического перемещения БПЛА через ROS 2 топик /mchs/cmd_vel -->
+    <plugin name="mchs_flight_controller" filename="libgazebo_ros_planar_move.so">
+      <ros>
+        <namespace>/mchs</namespace>
+        <remapping>cmd_vel:=cmd_vel</remapping>
+        <remapping>odom:=odom</remapping>
+      </ros>
+      <update_rate>50.0</update_rate>
+      <robot_base_frame>base_link</robot_base_frame>
+      <odometry_frame>odom</odometry_frame>
+      <publish_odom>true</publish_odom>
+      <publish_odom_tf>true</publish_odom_tf>
+    </plugin>
+  </model>
+</sdf>
