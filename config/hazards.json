@@ -5,55 +5,65 @@
     "short": "ПОЖАР",
     "threat": "CRITICAL",
     "color": "#FF4D2E",
-    "x": 60.0,
-    "y": 28.0,
+    "x": -62.2,
+    "y": 68.5,
     "area_sq_m": 64.2,
     "details": "Верховое распространение, пламя до 850 °C",
     "response": "Рекомендован наряд: 2 АЦ-40, автолестница АЛ-30, личный состав 8 чел.",
     "model": "fire_hazard",
     "z": 0.2,
-    "detect_classes": ["FIRE", "SMOKE"]
+    "detect_classes": [
+      "FIRE",
+      "SMOKE"
+    ]
   },
   "OIL": {
     "title": "Разлив нефтепродуктов",
     "short": "НЕФТЬ",
     "threat": "WARNING",
     "color": "#8D6E63",
-    "x": -58.0,
-    "y": 30.0,
+    "x": -48.4,
+    "y": 64.1,
     "area_sq_m": 118.0,
     "details": "Утечка дизельного топлива, угроза водоёму",
     "response": "Рекомендован наряд: 1 АЦ-40, скиммер, боновое ограждение, 6 чел.",
     "model": "oil_spill_hazard",
     "z": 0.02,
-    "detect_classes": ["OIL_SPILL"]
+    "detect_classes": [
+      "OIL_SPILL"
+    ]
   },
   "FLOOD": {
     "title": "Зона затопления",
     "short": "ПАВОДОК",
     "threat": "WARNING",
     "color": "#29B6F6",
-    "x": 45.0,
-    "y": -56.0,
+    "x": -27.6,
+    "y": 65.1,
     "area_sq_m": 340.5,
     "details": "Подъём уровня воды +1,8 м, затоплена дорога",
     "response": "Рекомендован наряд: 1 АСМ, 2 плавсредства, личный состав 6 чел.",
     "model": "flood_hazard",
     "z": 0.02,
-    "detect_classes": ["FLOOD"]
+    "detect_classes": [
+      "FLOOD"
+    ]
   },
   "WASTE": {
     "title": "Токсичные отходы",
     "short": "СВАЛКА",
     "threat": "CRITICAL",
     "color": "#FFD600",
-    "x": 68.0,
-    "y": -72.0,
+    "x": -33.6,
+    "y": 39.8,
     "area_sq_m": 28.0,
     "details": "Несанкционированная свалка, 12 бочек химреагентов",
     "response": "Рекомендован наряд: 1 АЦ-40, разведгруппа 4 чел., вывоз отходов.",
     "model": "waste_hazard",
     "z": 0.4,
-    "detect_classes": ["OIL_SPILL", "SMOKE"]
+    "detect_classes": [
+      "OIL_SPILL",
+      "SMOKE"
+    ]
   }
 }
