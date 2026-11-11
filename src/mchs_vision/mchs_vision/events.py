@@ -8,6 +8,9 @@
 
 from __future__ import annotations
 
+import os
+import cv2
+
 import math
 from dataclasses import dataclass
 from datetime import datetime
@@ -168,8 +171,41 @@ class EventThrottle:
 class EventFactory:
     """Собирает JSON-словарь события из записей пайплайна."""
 
-    def __init__(self):
+    def __init__(self, projector=None, registry=None):
         self._sequence = 0
+        self.projector = projector
+        self.registry = registry
+
+    def build_events(self, detections: List[Detection], pose: Pose,
+                     timestamp: Optional[datetime] = None) -> List[Dict]:
+        """Удобный метод для прямой сборки событий из списка детекций."""
+        if not detections:
+            return []
+        now = timestamp or datetime.now().astimezone()
+        records: List[HazardRecord] = []
+        for det in detections:
+            if self.projector is not None:
+                metrics = self.projector.region_metrics(det.contour, pose)
+                if metrics is None:
+                    continue
+                abs_x, abs_y = metrics.center_xy
+                rel_x, rel_y = metrics.rel_xy
+                lat, lon = self.projector.local_to_latlon(abs_x, abs_y)
+                rec = HazardRecord(
+                    detection=det,
+                    metrics=metrics,
+                    threat_level="CRITICAL" if det.hazard_type in ("FIRE", "VICTIM", "HUMAN") else "WARNING",
+                    abs_xy=(abs_x, abs_y),
+                    rel_xy=(rel_x, rel_y),
+                    lat=lat,
+                    lon=lon,
+                    smoothed_area_m2=metrics.area_m2,
+                )
+                records.append(rec)
+        if not records:
+            return []
+        incident_id = self.registry.incident_for(records[0].hazard_type, records[0].abs_xy, now) if self.registry else f"INC-{records[0].hazard_type}-01"
+        return [self.build(records[0], records, pose, incident_id, now)]
 
     def build(self, primary: HazardRecord, records: List[HazardRecord],
               pose: Pose, incident_id: str, timestamp: datetime) -> Dict:
@@ -244,3 +280,43 @@ def sort_records(records: List[HazardRecord]) -> List[HazardRecord]:
                          rec.smoothed_area_m2),
         reverse=True,
     )
+
+
+def save_victim_evidence_snapshot(
+    frame: np.ndarray,
+    centroid_px: Tuple[int, int],
+    bbox: Tuple[int, int, int, int],
+    pose: Pose,
+    output_dir: str,
+    incident_id: str = "INC-VICTIM",
+    timestamp: Optional[datetime] = None,
+) -> str:
+    """Сохраняет тактический фотоснимок с разметкой координат для найденного пострадавшего."""
+    now = timestamp or datetime.now()
+    stamp = now.strftime("%H%M%S")
+    os.makedirs(output_dir, exist_ok=True)
+    filename = f"{incident_id}_{stamp}.jpg"
+    full_path = os.path.join(output_dir, filename)
+
+    annotated = frame.copy()
+    h, w = annotated.shape[:2]
+    bx, by, bw, bh = bbox
+
+    # Тактическая прицельная рамка вокруг человека
+    cv2.rectangle(annotated, (bx - 4, by - 4), (bx + bw + 4, by + bh + 4), (0, 230, 255), 2)
+    corner_len = max(6, min(bw, bh) // 3)
+    cv2.line(annotated, (bx - 4, by - 4), (bx - 4 + corner_len, by - 4), (0, 90, 255), 3)
+    cv2.line(annotated, (bx - 4, by - 4), (bx - 4, by - 4 + corner_len), (0, 90, 255), 3)
+    cv2.circle(annotated, centroid_px, 4, (0, 255, 255), -1)
+
+    # Информационная плашка с координатами
+    card_w, card_h = 360, 85
+    cv2.rectangle(annotated, (15, 15), (15 + card_w, 15 + card_h), (15, 20, 28), -1)
+    cv2.rectangle(annotated, (15, 15), (15 + card_w, 15 + card_h), (0, 230, 255), 2)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    cv2.putText(annotated, "MCHS SAR // VICTIM LOCATED", (25, 38), font, 0.52, (0, 230, 255), 1, cv2.LINE_AA)
+    cv2.putText(annotated, f"COORD: X={pose.x_m:.1f}m, Y={pose.y_m:.1f}m, ALT={pose.z_m:.1f}m", (25, 62), font, 0.44, (255, 255, 255), 1, cv2.LINE_AA)
+    cv2.putText(annotated, "STATUS: CRITICAL RESCUE NEEDED", (25, 84), font, 0.44, (0, 90, 255), 1, cv2.LINE_AA)
+
+    cv2.imwrite(full_path, annotated)
+    return full_path

@@ -156,13 +156,34 @@ FLOOD = HazardClassSpec(
     description="Сине-голубая водная поверхность с высокой насыщенностью.",
 )
 
-DEFAULT_CLASSES: Tuple[HazardClassSpec, ...] = (FIRE, OIL_SPILL, FLOOD, SMOKE)
+VICTIM = HazardClassSpec(
+    name="VICTIM",
+    label_ru="Пострадавший (человек)",
+    color_bgr=(224, 64, 251),  # фуксия / ярко-малиновый
+    hsv_ranges=(((6, 110, 130), (22, 255, 255)),),
+    min_area_px=35,
+    open_kernel=3,
+    close_kernel=5,
+    max_texture_std=999.0,
+    max_fill_ratio=0.98,
+    min_solidity_ratio=0.30,
+    min_hull_ratio=0.20,
+    max_rectangularity=0.98,
+    min_area_m2=0.1,
+    description="Силуэт человека / спасательный сигнальный жилет.",
+)
+
+DEFAULT_CLASSES: Tuple[HazardClassSpec, ...] = (FIRE, OIL_SPILL, FLOOD, SMOKE, VICTIM)
 DEFAULT_ENABLED: Tuple[str, ...] = ("FIRE", "SMOKE", "OIL_SPILL", "FLOOD")
 
 
 @dataclass
 class DetectorConfig:
     """Параметры детектора, не привязанные к конкретному классу."""
+
+    @property
+    def specs(self) -> Dict[str, HazardClassSpec]:
+        return {c.name: c for c in self.classes}
 
     classes: Tuple[HazardClassSpec, ...] = DEFAULT_CLASSES
     enabled: Tuple[str, ...] = DEFAULT_ENABLED
@@ -264,13 +285,19 @@ DEFAULT_CAMERA = CameraConfig()
 DEFAULT_ORIGIN = GeoOrigin()
 
 
-def threat_level(area_m2: float, warning_m2: float = 15.0,
+def threat_level(val, warning_m2: float = 15.0,
                  critical_m2: float = 50.0) -> str:
-    """Классификация уровня опасности по площади очага (ТЗ хакатона).
-
-    < 15 м² — ADVISORY, 15..50 м² — WARNING, > 50 м² — CRITICAL.
-    Границы включены в нижний уровень, чтобы ровно 15 м² не «прыгало».
-    """
+    """Классификация уровня опасности по площади очага или имени класса."""
+    if isinstance(val, str):
+        if val in ("FIRE", "WASTE", "VICTIM", "HUMAN"):
+            return "CRITICAL"
+        if val in ("OIL_SPILL", "FLOOD"):
+            return "WARNING"
+        return "ADVISORY"
+    try:
+        area_m2 = float(val)
+    except (TypeError, ValueError):
+        return "ADVISORY"
     if area_m2 < warning_m2:
         return "ADVISORY"
     if area_m2 <= critical_m2:

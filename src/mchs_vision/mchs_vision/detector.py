@@ -444,6 +444,9 @@ class HazardDetector:
         if name == "FLOOD":
             hue_score = math.exp(-((h - 110.0) / 18.0) ** 2)
             return _clamp01(s / 180.0) * hue_score
+        if name in ("VICTIM", "HUMAN"):
+            hue_score = math.exp(-((h - 12.0) / 6.0) ** 2)
+            return _clamp01(s / 160.0) * _clamp01(v / 160.0) * hue_score
         return 0.5
 
     def _confidence(self, spec: HazardClassSpec, area_px: float, fill: float,

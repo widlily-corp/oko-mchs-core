@@ -151,7 +151,7 @@ class MchsVisionNode(Node):
         self.stream_quality = int(self.declare_parameter(
             "stream_quality", 80).value)
         enabled_raw = str(self.declare_parameter(
-            "enabled_classes", "FIRE,SMOKE,OIL_SPILL,FLOOD").value)
+            "enabled_classes", "FIRE,SMOKE,OIL_SPILL,FLOOD,VICTIM").value)
         enabled = tuple(name.strip().upper() for name in enabled_raw.split(",")
                         if name.strip())
         title = str(self.declare_parameter(
@@ -428,8 +428,10 @@ class MchsVisionNode(Node):
             return
         try:
             stamp = datetime.now().strftime("%H%M%S")
+            hazard_type = str(event.get("hazard_type") or "INC")
             incident_id = str(event.get("incident_id") or "INC")
-            name = f"{incident_id}_{stamp}.jpg"
+            prefix = "VICTIM_" if hazard_type in ("VICTIM", "HUMAN") else ""
+            name = f"{prefix}{incident_id}_{stamp}.jpg"
             path = os.path.join(self.incidents_dir, name)
             if not cv2.imwrite(path, frame):
                 return
