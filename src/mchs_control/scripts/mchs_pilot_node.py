@@ -888,6 +888,7 @@ def run_ros(args: argparse.Namespace) -> int:
         import rclpy
         from geometry_msgs.msg import Twist
         from nav_msgs.msg import Odometry
+        from rclpy.executors import ExternalShutdownException
         from rclpy.node import Node
         from std_msgs.msg import String
     except ImportError as error:
@@ -1247,11 +1248,17 @@ def run_ros(args: argparse.Namespace) -> int:
     node = MchsPilotNode()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         node.get_logger().info("Остановка оператором. Гашу двигатели.")
-        node._publish_command(Command())
+        try:
+            node._publish_command(Command())
+        except Exception:  # noqa: BLE001 - контекст уже мог быть погашен
+            pass
     finally:
-        node.destroy_node()
+        try:
+            node.destroy_node()
+        except Exception:  # noqa: BLE001 - нода могла умереть раньше
+            pass
         rclpy.try_shutdown()
     return 0
 

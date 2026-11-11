@@ -128,14 +128,17 @@ class MissionVideoReporter:
         writer = cv2.VideoWriter(fallback_path, fourcc, fps, (w, h))
         return writer, fallback_path
 
+    @staticmethod
+    def card_pad(width: int, height: int) -> int:
+        """Внутренний отступ акцентной рамки карточек (масштабируется)."""
+        return max(12, int(min(width, height) * 0.055))
+
     def _render_title_card(self, title: str, subtitle: str, timestamp_str: str) -> np.ndarray:
         """Создаёт кадр титульной заставки."""
         w, h = self.config.width, self.config.height
         scale = min(w / 1280.0, h / 720.0)
-        x0 = max(12, int(80 * scale))
-        max_w = w - 2 * x0
         fs = lambda value: max(10, int(value * scale))  # noqa: E731
-        ys = lambda value: int(value * scale)  # noqa: E731
+        pad = self.card_pad(w, h)
         frame = np.full((h, w, 3), (15, 20, 28), dtype=np.uint8)
 
         # Фоновая тактическая сетка
@@ -146,34 +149,54 @@ class MissionVideoReporter:
             cv2.line(frame, (0, y), (w, y), grid_color, 1)
 
         # Декоративная акцентная рамка
-        cv2.rectangle(frame, (40, 40), (w - 40, h - 40), (0, 140, 255), 2)
-        cv2.rectangle(frame, (44, 44), (w - 44, h - 44), (0, 80, 180), 1)
+        cv2.rectangle(frame, (pad, pad), (w - pad, h - pad), (0, 140, 255), 2)
+        cv2.rectangle(frame, (pad + 4, pad + 4), (w - pad - 4, h - pad - 4),
+                      (0, 80, 180), 1)
 
+        x0 = pad + max(10, int(28 * scale))
+        max_w = w - pad - x0
+        y_cursor = [pad + max(4, int(8 * scale))]
+
+        def next_line(size: int, gap: int) -> int:
+            """Возвращает верх строки и сдвигает курсор ниже неё.
+
+            ``_draw_texts`` рисует от верхней кромки (PIL anchor по умолчанию —
+            left-ascender), поэтому высоту шрифта прибавляем к курсору.
+            """
+            top_y = y_cursor[0]
+            y_cursor[0] = top_y + size + max(2, int(gap * scale))
+            return top_y
+
+        org_y = next_line(fs(38), 12)
+        title_y = next_line(fs(62), 22)
+        subtitle_y = next_line(fs(36), 18)
+        sep_y = y_cursor[0] + max(2, int(6 * scale))
+        y_cursor[0] = sep_y + max(2, int(6 * scale))
+        callsign_y = next_line(fs(28), 14)
+        timestamp_y = next_line(fs(24), 10)
+        status_y = next_line(fs(24), 10)
+
+        cv2.line(frame, (x0, sep_y), (w - x0, sep_y), (0, 120, 200), 2)
         items = [
-            (self.config.organization, x0, ys(70), fs(38),
+            (self.config.organization, x0, org_y, fs(38),
              (0, 210, 255), True, max_w),
-            (title, x0, ys(145), fs(62), (255, 255, 255), True, max_w),
-            (subtitle, x0, ys(230), fs(36), (0, 160, 255), False, max_w),
-        ]
-        cv2.line(frame, (x0, ys(300)), (w - x0, ys(300)), (0, 120, 200), 2)
-        items.extend([
+            (title, x0, title_y, fs(62), (255, 255, 255), True, max_w),
+            (subtitle, x0, subtitle_y, fs(36), (0, 160, 255), False, max_w),
             (f"БОРТОВОЙ КОМПЛЕКС: {self.config.uav_callsign}",
-             x0, ys(355), fs(28), (220, 230, 240), False, max_w),
+             x0, callsign_y, fs(28), (220, 230, 240), False, max_w),
             (f"ДАТА И ВРЕМЯ ФОРМИРОВАНИЯ: {timestamp_str}",
-             x0, ys(405), fs(24), (160, 180, 200), False, max_w),
+             x0, timestamp_y, fs(24), (160, 180, 200), False, max_w),
             ("СТАТУС МИССИИ: АВТОНОМНЫЙ ПАТРУЛЬ // ДАННЫЕ ЗАФИКСИРОВАНЫ",
-             x0, ys(460), fs(24), (0, 220, 120), True, max_w),
-        ])
+             x0, status_y, fs(24), (0, 220, 120), True, max_w),
+        ]
         return self._draw_texts(frame, items)
 
     def _render_summary_card(self, stats: Dict[str, any]) -> np.ndarray:
         """Создаёт финальный экран с итогами миссии."""
         w, h = self.config.width, self.config.height
         scale = min(w / 1280.0, h / 720.0)
-        x0 = max(12, int(80 * scale))
-        max_w = w - 2 * x0
         fs = lambda value: max(10, int(value * scale))  # noqa: E731
-        ys = lambda value: int(value * scale)  # noqa: E731
+        pad = self.card_pad(w, h)
         frame = np.full((h, w, 3), (12, 16, 22), dtype=np.uint8)
 
         # Фоновая тактическая сетка
@@ -183,23 +206,29 @@ class MissionVideoReporter:
         for y in range(0, h, 60):
             cv2.line(frame, (0, y), (w, y), grid_color, 1)
 
-        cv2.rectangle(frame, (int(40*scale), int(40*scale)),
-                      (w - int(40*scale), h - int(40*scale)), (0, 210, 120), 2)
+        cv2.rectangle(frame, (pad, pad), (w - pad, h - pad), (0, 210, 120), 2)
+        x0 = pad + max(10, int(28 * scale))
+        max_w = w - pad - x0
+        title_y = pad + max(4, int(8 * scale))
+        sep_y = title_y + fs(42) + max(4, int(10 * scale))
+
         items = [
             ("СВОДНЫЙ ОТЧЁТ РЕЗУЛЬТАТОВ ВОЗДУШНОГО ПАТРУЛЯ",
-             x0, ys(75), fs(42), (255, 255, 255), True, max_w),
+             x0, title_y, fs(42), (255, 255, 255), True, max_w),
         ]
-        cv2.line(frame, (x0, ys(150)), (w - x0, ys(150)), (0, 210, 120), 2)
+        cv2.line(frame, (x0, sep_y), (w - x0, sep_y), (0, 210, 120), 2)
 
-        y_offset = ys(190)
+        y_offset = sep_y + max(6, int(12 * scale))
+        row_step = fs(28) + max(6, int(16 * scale))
         for key, val in stats.items():
             label = str(key).upper().replace("_", " ")
             items.append((f"{label}: {val}", x0, y_offset, fs(28),
                           (200, 220, 240), False, max_w))
-            y_offset += ys(55)
+            y_offset += row_step
 
         items.append(("МАТЕРИАЛЫ ПЕРЕДАНЫ В ОПЕРАТИВНЫЙ ШТАБ ЦУКС МЧС РОССИИ",
-                      x0, h - ys(90), fs(24), (0, 210, 255), True, max_w))
+                      x0, h - pad - fs(24) - max(4, int(8 * scale)), fs(24),
+                      (0, 210, 255), True, max_w))
         return self._draw_texts(frame, items)
 
     def compile_report(

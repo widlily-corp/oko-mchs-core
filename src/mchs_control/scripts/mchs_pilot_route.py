@@ -19,6 +19,7 @@
 Входы/выходы
 ------------
 подписки:  ``/mchs/odom``         (nav_msgs/Odometry)     — фактическая позиция
+           ``/mchs/detection_event`` (std_msgs/String)     — тревоги зрения
 публикует: ``/mchs/cmd_vel``      (geometry_msgs/Twist)   — уставки скорости
            ``/mchs/scan_status``  (std_msgs/String, JSON) — статус для АРМ.
 
@@ -26,7 +27,7 @@ JSON статуса (раз в 1 с)::
 
     {"row": k, "rows_total": N, "progress": 0.0..1.0,
      "phase": "ОЖИДАНИЕ ОДОМЕТРИИ" | "ВЫХОД В ЗОНУ" | "СКАНИРОВАНИЕ" |
-              "ВОЗВРАТ НА БАЗУ" | "ОЖИДАНИЕ",
+              "НАБЛЮДЕНИЕ" | "ВОЗВРАТ НА БАЗУ" | "ОЖИДАНИЕ",
      "x": .., "y": .., "target_x": .., "target_y": .., "ts": ..}
 
 ``row`` — номер текущего ряда, нумерация с 1 (``1..rows_total``).
@@ -60,6 +61,7 @@ import time
 from dataclasses import dataclass, field
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
@@ -70,6 +72,20 @@ REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
 SRC_DIR = os.path.join(REPO_ROOT, "src")
 if SRC_DIR not in sys.path:  # импорт mchs_core работает из любой папки
     sys.path.insert(0, SRC_DIR)
+CONTROL_PKG_DIR = os.path.join(SRC_DIR, "mchs_control")
+if CONTROL_PKG_DIR not in sys.path:  # пакет mchs_control (чистая логика)
+    sys.path.insert(0, CONTROL_PKG_DIR)
+
+from mchs_control.route_inspection import (  # noqa: E402
+    DEFAULT_DETECTION_TOPIC,
+    HOVER_CRITICAL_S,
+    HOVER_WARNING_S,
+    INSPECTION_COOLDOWN_S,
+    LINK_LOSS_RTL_S,
+    InspectionController,
+    link_loss_needs_rtl,
+    parse_detection_event,
+)
 
 try:
     from mchs_core import get_logger, install_crash_handler
@@ -115,6 +131,7 @@ PHASE_OUTBOUND = "ВЫХОД В ЗОНУ"
 PHASE_SCAN = "СКАНИРОВАНИЕ"
 PHASE_RTL = "ВОЗВРАТ НА БАЗУ"
 PHASE_WAIT = "ОЖИДАНИЕ"
+PHASE_HOVER = "НАБЛЮДЕНИЕ"
 
 # Периоды (с).
 CONTROL_PERIOD_S = 0.1
@@ -364,6 +381,10 @@ class MchsScanPilot(Node):
         self.target_y = self.waypoints[0]["y"]
         self.odom_warned = False
 
+        # Зависание над очагом по тревоге зрения (WARNING 5 с / CRITICAL 10 с).
+        self.inspector = InspectionController()
+        self.hovering = False
+
         # Таймеры логирования/статуса/команд.
         self.start_time = time.monotonic()
         self.last_control_time = self.start_time
@@ -379,6 +400,8 @@ class MchsScanPilot(Node):
         self.cmd_publisher = self.create_publisher(Twist, self.mission.cmd_vel_topic, 10)
         self.status_publisher = self.create_publisher(String, self.mission.scan_status_topic, 10)
         self.create_subscription(Odometry, self.mission.odom_topic, self._on_odom, 10)
+        self.create_subscription(String, DEFAULT_DETECTION_TOPIC,
+                                 self._on_detection, 10)
         self.create_timer(CONTROL_PERIOD_S, self._control_loop)
 
         self._log(
@@ -437,6 +460,27 @@ class MchsScanPilot(Node):
             return self.odom_x, self.odom_y
         return self.est_x, self.est_y
 
+    # -- события зрения -----------------------------------------------------
+
+    def _on_detection(self, message: String) -> None:
+        # Тревога зрения: зависаем над очагом для детальной съёмки.
+        event = parse_detection_event(message.data)
+        if event is None:
+            return
+        if self.mode != "SCAN":
+            return  # на выходе в зону и на RTL инспекция не начинается
+        now = time.monotonic()
+        if not self.inspector.on_event(event, now):
+            return
+        self._log(
+            "[ТРЕВОГА] %s %s: зависание %.0f с для детальной съёмки и протокола ЦУКС"
+            % (
+                event.get("hazard_type") or "ЧС",
+                event.get("threat_level") or "",
+                self.inspector.duration_for(event.get("threat_level")),
+            )
+        )
+
     # -- команды оператора --------------------------------------------------
 
     def _poll_mission_cmd(self, now: float) -> None:
@@ -483,6 +527,8 @@ class MchsScanPilot(Node):
     def _phase(self) -> str:
         if not self.have_odom:
             return PHASE_WAIT_ODOM
+        if self.hovering:
+            return PHASE_HOVER
         if self.mode == "RTL":
             return PHASE_RTL if not self.rtl_arrived else PHASE_WAIT
         if self.mode == "OUTBOUND":
@@ -544,10 +590,27 @@ class MchsScanPilot(Node):
         dt = min(dt, 0.5)
 
         self._poll_mission_cmd(now)
+
+        # Потеря канала/телеметрии: автономный возврат на базу по счислению.
+        if link_loss_needs_rtl(self.have_odom, now - self.last_odom_time,
+                               self.mode):
+            self.mode = "RTL"
+            self.rtl_arrived = False
+            self.inspector.cancel()
+            self._warn(
+                "[СВЯЗЬ] Телеметрия не поступает > %.0f с — автономный RTL "
+                "по счислению" % LINK_LOSS_RTL_S
+            )
+
         pos_x, pos_y = self._position(now)
         cmd = Twist()
 
-        if not self.have_odom:
+        # Зависание над очагом: горизонтальная скорость нулевая, маршрут не
+        # продвигается, цель остаётся на очаге до конца инспекции.
+        self.hovering = self.inspector.is_active(now)
+        if self.hovering:
+            pass
+        elif not self.have_odom:
             # До первой одометрии не двигаемся: кинематический плагин без
             # обратной связи улетел бы вслепую.
             if not self.odom_warned and (now - self.start_time) >= ODOM_TIMEOUT_S:
@@ -645,7 +708,7 @@ def main(args=None) -> int:
     try:
         node = MchsScanPilot()
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         if node is not None:

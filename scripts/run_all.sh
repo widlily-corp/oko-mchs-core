@@ -114,10 +114,14 @@ PIDS+=($!)
 sleep 2
 
 if [ "${MCHS_NO_UI:-0}" != "1" ] && command -v powershell.exe >/dev/null 2>&1; then
-    UI_UNC='\\wsl.localhost\Ubuntu-22.04\root\oko-mchs-core\src\mchs_ui\app.py'
-    echo "[4/4] Открываю АРМ оператора на Windows..."
+    UI_LOCAL="$REPO_DIR/src/mchs_ui/app.py"
+    # Путь для Windows считаем от фактического корня репозитория, а не хардкодом:
+    # иначе открывается устаревшая копия АРМ из другого чекаута.
+    UI_WIN=$(wslpath -w "$UI_LOCAL" 2>/dev/null || true)
+    [ -n "$UI_WIN" ] || UI_WIN="$UI_LOCAL"
+    echo "[4/4] Открываю АРМ оператора на Windows: $UI_WIN"
     powershell.exe -NoProfile -Command \
-        "Start-Process -FilePath python -ArgumentList '$UI_UNC'" \
+        "Start-Process -FilePath python -ArgumentList '$UI_WIN'" \
         >/dev/null 2>&1 || echo "       Не удалось автозапустить АРМ (python/UNC)."
 fi
 

@@ -3,9 +3,12 @@
 set -e
 
 source /opt/ros/humble/setup.bash
-cd /root/oko-mchs-core
 
-export GAZEBO_MODEL_PATH="/root/oko-mchs-core/src/mchs_simulation/models:/usr/share/gazebo-11/models:$GAZEBO_MODEL_PATH"
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+REPO_DIR=$(dirname "$SCRIPT_DIR")
+cd "$REPO_DIR"
+
+export GAZEBO_MODEL_PATH="$REPO_DIR/src/mchs_simulation/models:/usr/share/gazebo-11/models:${GAZEBO_MODEL_PATH:-}"
 
 echo "=== 1. ЗАПУСК GZSERVER С АРЕНОЙ ЧС ==="
 gzserver --verbose src/mchs_simulation/worlds/mchs_emergency_arena.world -s libgazebo_ros_init.so -s libgazebo_ros_factory.so &

@@ -320,3 +320,17 @@ def save_victim_evidence_snapshot(
 
     cv2.imwrite(full_path, annotated)
     return full_path
+
+
+#: Уровни угрозы, по которым сохраняется фото-улика.
+EVIDENCE_THREAT_LEVELS = ("WARNING", "CRITICAL")
+
+
+def should_save_evidence(event: Optional[dict]) -> bool:
+    """Нужно ли сохранять фото-улику по событию ЧС.
+
+    Фиксация не зависит от близости к координате из ``config/hazards.json``:
+    очаг или пострадавшего могли переместить на арене во время миссии, а
+    улика всё равно должна остаться в ``reports/incidents``.
+    """
+    return str((event or {}).get("threat_level", "")).upper() in EVIDENCE_THREAT_LEVELS

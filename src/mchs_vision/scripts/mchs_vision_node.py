@@ -47,6 +47,7 @@ import cv2
 import rclpy
 from cv_bridge import CvBridge
 from nav_msgs.msg import Odometry
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
@@ -75,7 +76,11 @@ if install_crash_handler is not None:
     install_crash_handler("VISION")
 
 from mchs_vision.config import CameraConfig, DetectorConfig, GeoOrigin
-from mchs_vision.events import EventThrottle, save_victim_evidence_snapshot
+from mchs_vision.events import (
+    EventThrottle,
+    save_victim_evidence_snapshot,
+    should_save_evidence,
+)
 from mchs_vision.geometry import Pose
 from mchs_vision.pipeline import VisionPipeline
 from mchs_vision.web_stream import LatestFrameStreamer
@@ -367,11 +372,11 @@ class MchsVisionNode(Node):
 
     def _publish_state(self) -> None:
         """Публикует телеметрию для АРМ: http://127.0.0.1:8080/state.json."""
-        if self.streamer is None:
-            return
         now = time.time()
         if now - self._hazards_loaded_at > 2.0:
             self._load_hazards()
+        if self.streamer is None:
+            return
         pose = self._pose
         if self._speed_mps > 1.0:
             heading_deg = math.degrees(
@@ -503,6 +508,10 @@ class MchsVisionNode(Node):
         """
         if not self.protocol_enabled:
             return
+        # Координаты очагов могли измениться (АРМ / arena_controller):
+        # перечитываем config/hazards.json, не дожидаясь публикации состояния.
+        if time.time() - self._hazards_loaded_at > 2.0:
+            self._load_hazards()
         threat = str(event.get("threat_level") or "").upper()
         if threat not in ("WARNING", "CRITICAL"):
             return
@@ -566,6 +575,8 @@ class MchsVisionNode(Node):
                 self.logger.warning(f"Не удалось записать протокол: {exc}")
 
     def _image_callback(self, msg: Image) -> None:
+        if not rclpy.ok():
+            return  # контекст уже погашен (Ctrl+C) — не публикуем в мёртвые пабы
         self._frame_index += 1
         if self._frame_index % self.process_every_n != 0:
             return
@@ -639,9 +650,12 @@ class MchsVisionNode(Node):
                     or abs(event_y) > self.arena_half_size_m):
                 # Координата вне арены — артефакт дальней кромки/фона.
                 continue
-            self.event_publisher.publish(
-                String(data=json.dumps(event, ensure_ascii=False))
-            )
+            try:
+                self.event_publisher.publish(
+                    String(data=json.dumps(event, ensure_ascii=False))
+                )
+            except Exception:  # noqa: BLE001 - гонка с остановкой ноды
+                return
             is_new = self._log_event(event)
             if log_event is not None:
                 lvl = "ERROR" if event.get("threat_level") == "CRITICAL" else "WARNING"
@@ -660,23 +674,23 @@ class MchsVisionNode(Node):
                 hazard_class = str(event.get("hazard_type") or "CHS")
                 self._incident_counts[hazard_class] = (
                     self._incident_counts.get(hazard_class, 0) + 1)
-                if str(event.get("threat_level") or "").upper() in (
-                        "WARNING", "CRITICAL"):
-                    # Фотодоказательство — только для очага, подтверждённого
-                    # рядом с координатой из config/hazards.json.
-                    hazard_key, _ = self._match_hazard(event)
-                    if hazard_key is not None:
-                        self._save_incident_photo(event, result.annotated)
+                if should_save_evidence(event):
+                    # Фотофиксация не зависит от радиуса config/hazards.json:
+                    # очаг могли переместить прямо во время миссии.
+                    self._save_incident_photo(event, result.annotated)
             self._maybe_write_protocol(event)
 
         if self.streamer is not None:
             self.streamer.update(result.annotated)
 
-        if self.publish_annotated:
-            annotated = self.bridge.cv2_to_imgmsg(result.annotated,
-                                                  encoding="bgr8")
-            annotated.header = msg.header
-            self.annotated_publisher.publish(annotated)
+        if self.publish_annotated and rclpy.ok():
+            try:
+                annotated = self.bridge.cv2_to_imgmsg(result.annotated,
+                                                      encoding="bgr8")
+                annotated.header = msg.header
+                self.annotated_publisher.publish(annotated)
+            except Exception:  # noqa: BLE001 - гонка с остановкой ноды
+                pass
 
         if self.show_window:
             self._show_window(result.annotated)
@@ -755,12 +769,18 @@ def main(args=None) -> None:
     try:
         node = MchsVisionNode()
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # Штатная остановка (Ctrl+C / SIGINT): rclpy уже погасил контекст,
+        # повторный shutdown() бросал RCLError и писал ложный CRASH.
         pass
     finally:
         if node is not None:
-            node.destroy_node()
-        rclpy.shutdown()
+            try:
+                node.destroy_node()
+            except Exception:  # noqa: BLE001 - нода могла умереть раньше
+                pass
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

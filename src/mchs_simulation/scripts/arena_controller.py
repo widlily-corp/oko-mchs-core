@@ -63,6 +63,58 @@ HAZARD_MODELS = {
     }
 }
 
+#: Соответствие ключа --hazard и записи в config/hazards.json.
+CONFIG_KEYS = {
+    'fire': 'FIRE',
+    'oil': 'OIL',
+    'flood': 'FLOOD',
+    'waste': 'WASTE',
+    'human': 'HUMAN',
+    'victim': 'HUMAN',
+}
+HAZARDS_CONFIG_PATH = os.path.join(REPO_ROOT, "config", "hazards.json")
+
+
+def update_hazards_config(hazard_key: str, x: float, y: float,
+                          z: float) -> bool:
+    """Записывает координаты перемещённого очага в config/hazards.json.
+
+    Файл — единый источник истины для АРМ и ноды зрения. Без этой записи
+    перемещённый человек оставался «не там» для фото-улик и протокола ЦУКС.
+    """
+    config_key = CONFIG_KEYS.get(hazard_key)
+    if config_key is None:
+        return False
+    try:
+        with open(HAZARDS_CONFIG_PATH, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError) as exc:
+        if logger:
+            logger.warning(f"config/hazards.json не прочитан: {exc}")
+        return False
+    entry = data.get(config_key)
+    if not isinstance(entry, dict):
+        return False
+    entry["x"] = round(float(x), 2)
+    entry["y"] = round(float(y), 2)
+    entry["z"] = round(float(z), 2)
+    tmp_path = HAZARDS_CONFIG_PATH + ".tmp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+        os.replace(tmp_path, HAZARDS_CONFIG_PATH)
+    except OSError as exc:
+        if logger:
+            logger.warning(f"config/hazards.json не обновлён: {exc}")
+        return False
+    if logger:
+        logger.info(
+            f"config/hazards.json обновлён: {config_key} -> "
+            f"({x:.2f}, {y:.2f}, {z:.2f})")
+    return True
+
+
 # Рандомизация по всей арене 200×200 м (для стресс-теста жюри).
 RANDOM_ARENA_LIMIT_M = 85.0        # x, y ∈ [-85, 85] м
 RANDOM_MIN_HAZARD_SPACING_M = 30.0  # минимум 30 м между очагами
@@ -228,6 +280,7 @@ def move_hazard(hazard_key: str, x: float, y: float, z: float = None) -> bool:
         success = move_hazard_gz_cli(model_name, x, y, target_z)
 
     if success:
+        update_hazards_config(hazard_key, x, y, target_z)
         succ_msg = f"Успешно: {model_name} перемещен в координаты ({x:.2f}, {y:.2f})"
         print(f"[ARENA CONTROLLER] ✅ {succ_msg}")
         if logger:

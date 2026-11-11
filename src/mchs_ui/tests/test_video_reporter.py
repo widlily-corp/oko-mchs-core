@@ -88,3 +88,41 @@ def test_video_reporter_uses_cyrillic_capable_font():
     )
     assert card.shape == (360, 640, 3)
     assert card.mean() > 0
+
+
+def test_title_card_text_does_not_touch_frame():
+    """Вёрстка титула на 640x360: текст не наезжает на акцентную рамку."""
+    reporter = MissionVideoReporter(VideoReportConfig(width=640, height=360,
+                                                      fps=10.0))
+    card = reporter._render_title_card(
+        "ОКО МЧС // ОПЕРАТИВНЫЙ РАПОРТ",
+        "АВТОНОМНОЕ ВЫЯВЛЕНИЕ ЧРЕЗВЫЧАЙНЫХ СИТУАЦИЙ",
+        "11.11.2026 21:00:00 МСК",
+    )
+    pad = MissionVideoReporter.card_pad(640, 360)
+    top_margin = card[: pad - 2, :, :]
+    bottom_margin = card[360 - pad + 4:, :, :]
+    assert int(top_margin.max()) < 60, "текст залез на верхнюю кромку рамки"
+    assert int(bottom_margin.max()) < 60, "текст залез на нижнюю кромку рамки"
+
+
+def test_report_includes_every_flight_frame():
+    """Каждый переданный кадр полёта попадает в ролик (по 1 с на кадр)."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        reporter = MissionVideoReporter(VideoReportConfig(width=640, height=360,
+                                                          fps=10.0))
+        frames = [
+            create_sample_frame("КАДР 1", color=(40, 50, 20)),
+            create_sample_frame("КАДР 2", color=(10, 30, 180)),
+            create_sample_frame("КАДР 3", color=(120, 20, 140)),
+        ]
+        path = reporter.compile_report(
+            frames=frames,
+            stats={"статус": "ТЕСТ"},
+            output_path=os.path.join(tmp_dir, "frames.mp4"),
+        )
+        cap = cv2.VideoCapture(path)
+        count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        cap.release()
+        # титул 2 с + 3 кадра по 1 с + сводка 2 с = 70 кадров при 10 fps
+        assert count >= 65, f"кадры полёта потерялись: {count} кадров"

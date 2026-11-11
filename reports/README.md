@@ -1,7 +1,7 @@
 # Отчёты «ОКО МЧС» — куда всё сохраняется
 
 Каталог `reports/` — единое место для всех материалов полёта. На Windows он же
-открывается по UNC-пути `\\wsl.localhost\Ubuntu-22.04\root\oko-mchs-core\reports`
+открывается по UNC-пути `\\wsl.localhost\Ubuntu-22.04\root\Rep\oko-mchs-core\reports`
 (кнопка «📂 ОТЧЁТЫ» в АРМ и сочетание клавиш `Ctrl+O`).
 
 | Каталог | Что внутри | Кто пишет |

@@ -51,6 +51,8 @@ import time
 import urllib.request
 from pathlib import Path
 
+from wsl_paths import repo_wsl_path
+
 # --- Подключение mchs_core и scripts для централизованного логирования и диагностики ---
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_DIR = REPO_ROOT / "src"
@@ -884,6 +886,12 @@ class OkoMchsApp(ctk.CTk):
         self.recorder: RecordingWriter | None = None
         self.last_frame = None
         self._last_record_ts = 0.0
+        # Кадры полёта для видеорапорта: снимок «раз в N секунд», не больше M
+        # штук — чтобы ролик содержал патрулирование, а не один стоп-кадр.
+        self._flight_frames: list = []
+        self._flight_frames_max = 24
+        self._flight_frame_interval = 1.5
+        self._last_flight_frame_ts = 0.0
         self._drag_key: str | None = None
         self._drag_moved = False
 
@@ -1451,6 +1459,7 @@ class OkoMchsApp(ctk.CTk):
         if not self.mission_active:
             self.mission_active = True
             self.detected = False
+            self._flight_frames.clear()
             self._mission_btn_mode = "scan"
             self.btn_mission.configure(text="■ АВАРИЙНЫЙ ВОЗВРАТ (RTL)", fg_color=COLORS["crit"])
             if live:
@@ -1774,6 +1783,11 @@ class OkoMchsApp(ctk.CTk):
             return
 
         snapshot = frame.copy()
+        # Ролик собираем из накопленных кадров патруля; если их ещё нет —
+        # хотя бы текущий кадр, чтобы кнопка работала сразу после старта.
+        frames = [item.copy() for item in self._flight_frames][-12:]
+        if not frames:
+            frames = [snapshot]
         protocol = dict(self.protocol or {})
         self._video_report_busy = True
         self.btn_video_rep.configure(state="disabled", text="🎬 СБОРКА…")
@@ -1809,7 +1823,7 @@ class OkoMchsApp(ctk.CTk):
                 self.video_dir.mkdir(parents=True, exist_ok=True)
                 path = self.video_dir / f"mission_report_{stamp}.mp4"
                 result = reporter.compile_report(
-                    frames=[snapshot], incidents=incidents, stats=stats,
+                    frames=frames, incidents=incidents, stats=stats,
                     output_path=str(path),
                 )
                 self._video_report_queue.put(("ok", result))
@@ -2318,9 +2332,10 @@ class OkoMchsApp(ctk.CTk):
             self.log("Применение очага в Gazebo пропущено: wsl.exe доступен только на Windows.")
             return
         distro = os.environ.get("WSL_DISTRO_NAME") or "Ubuntu-22.04"
+        repo = repo_wsl_path()
         command = [
             "wsl.exe", "-d", distro, "-e", "bash", "-lc",
-            "cd /root/oko-mchs-core && python3 src/mchs_simulation/scripts/arena_controller.py"
+            f"cd '{repo}' && python3 src/mchs_simulation/scripts/arena_controller.py"
             f" --hazard {key.lower()} --x {x:.1f} --y {y:.1f}",
         ]
         threading.Thread(target=self._run_gazebo_command, args=(key, command), daemon=True).start()
@@ -2374,9 +2389,10 @@ class OkoMchsApp(ctk.CTk):
                    for key, (x, y) in positions.items()}
         json_payload = json.dumps(payload, ensure_ascii=False)
         distro = os.environ.get("WSL_DISTRO_NAME") or "Ubuntu-22.04"
+        repo = repo_wsl_path()
         command = [
             "wsl.exe", "-d", distro, "-e", "bash", "-lc",
-            "cd /root/oko-mchs-core && python3 src/mchs_simulation/scripts/arena_controller.py"
+            f"cd '{repo}' && python3 src/mchs_simulation/scripts/arena_controller.py"
             f" --positions '{json_payload}'",
         ]
         threading.Thread(target=self._run_gazebo_command,
@@ -2579,6 +2595,13 @@ class OkoMchsApp(ctk.CTk):
 
         # Кадр «как видит оператор» — используется снимками и записью.
         self.last_frame = frame.copy()
+
+        # Накопитель кадров полёта для видеорапорта миссии.
+        now_mono = time.monotonic()
+        if (now_mono - self._last_flight_frame_ts >= self._flight_frame_interval
+                and len(self._flight_frames) < self._flight_frames_max):
+            self._last_flight_frame_ts = now_mono
+            self._flight_frames.append(self.last_frame.copy())
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         image = ImageTk.PhotoImage(Image.fromarray(rgb))

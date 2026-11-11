@@ -18,7 +18,7 @@ run_all.bat        # или: powershell -File run_all.ps1
 ```bash
 wsl.exe -d Ubuntu-22.04 -e bash -c "cd /path/to/oko-mchs-core && MCHS_NO_UI=1 bash scripts/run_all.sh"
 # окно АРМ оператора (если не открылось само):
-python "\\wsl.localhost\Ubuntu-22.04\root\oko-mchs-core\src\mchs_ui\app.py"
+python "\\wsl.localhost\Ubuntu-22.04\root\Rep\oko-mchs-core\src\mchs_ui\app.py"
 ```
 
 Что происходит:
@@ -110,7 +110,7 @@ python3 src/mchs_simulation/scripts/arena_controller.py --list     # списо�
 ## 5. Отчёты: где фото, видео и протоколы
 
 Все материалы — в `reports/` (на Windows:
-`\\wsl.localhost\Ubuntu-22.04\root\oko-mchs-core\reports`, в АРМ кнопка
+`\\wsl.localhost\Ubuntu-22.04\root\Rep\oko-mchs-core\reports`, в АРМ кнопка
 «📂 ОТЧЁТЫ» / `Ctrl+O`):
 
 | Путь | Содержимое |
