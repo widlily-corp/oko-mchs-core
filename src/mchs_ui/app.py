@@ -1,22 +1,47 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""АРМ ОПЕРАТОРА ЦУКС «ОКО МЧС» — тактический пульт мониторинга ЧС.
+
+Что умеет пульт:
+
+1. **Живое видео с борта.** Основной режим — MJPEG-поток ``/stream`` с
+   веб-сервера ноды зрения (порт 8080). Если поток недоступен, пульт
+   переключается на опрос ``/snapshot.jpg``, а если и его нет — рисует
+   синтетический полигон, чтобы демонстрация не зависела от Gazebo.
+2. **Мультиспектральная камера.** Оптический режим, тепловизор (палитра
+   INFERNO) и ИИ-оверлей с рамкой детекции и подписями.
+3. **Тактическая карта.** Зона патрулирования 60×40 м, маршрут «змейка»,
+   трек БПЛА, очаги ЧС, дальномер и масштабная линейка.
+4. **Телеметрия.** Высота, скорость, заряд АКБ, координаты, курс, фаза.
+5. **Приём протокола ЦУКС.** Пульт сам замечает новый
+   ``reports/incident_protocol.json`` (его пишет автопилот), включает
+   тревогу, показывает карточку инцидента и подсвечивает очаг на карте.
+6. **Экспорт.** Протокол в JSON и печатный бланк TXT для дежурного.
+
+Горячие клавиши: ``Space`` — старт/RTL, ``T`` — тепловизор, ``O`` — оверлей,
+``E`` — экспорт протокола, ``F11`` — полный экран, ``Esc`` — выйти из него.
+
+Запуск::
+
+    python3 src/mchs_ui/app.py              # обычный режим
+    python3 src/mchs_ui/app.py --offline    # без обращения к видеосерверу
+    python3 src/mchs_ui/app.py --autostart  # сразу начать демонстрационный полёт
 """
-АВТОНОМНЫЙ ТАКТИЧЕСКИЙ ПУЛЬТ ОПЕРАТОРА МЧС РОССИИ — «ОКО МЧС»
-Интегрированный АРМ ЦУКС:
-1. Тактическая векторная карта полигона с отображением базы, трека БПЛА и 4 типов ЧС;
-2. Мультиспектральная камера БПЛА (Оптический 4K / Тепловизор FLIR / ИИ-оверлей детекции);
-3. Детекция и классификация 4 типов ЧС (Пожар, Разлив нефти, Затопление, Токсичные отходы);
-4. Панель телеметрии (высота, скорость, заряд АКБ, координаты, дальномер);
-5. Журнал оперативных событий и экспорт протокола инцидента МЧС (JSON / TXT).
-"""
-import os
-import sys
-import math
-import time
+
+from __future__ import annotations
+
+import argparse
 import datetime
 import json
+import math
+import os
+import sys
 import threading
+import time
 import urllib.request
 
-# --- Windows DPI: окно должно полностью помещаться на экран (100-150%) ---
+
+# --- Windows DPI: окно должно помещаться на экран при масштабе 100-150% ---
 if sys.platform == "win32":
     try:
         import ctypes
@@ -27,544 +52,1306 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-import tkinter as tk
-import customtkinter as ctk
 import cv2
 import numpy as np
+import tkinter as tk
 from PIL import Image, ImageTk
+
+try:  # customtkinter есть на Windows-машине оператора
+    import customtkinter as ctk
+except ImportError:  # pragma: no cover - подсказка при запуске без зависимости
+    print("[ОШИБКА] Не установлен customtkinter. Выполните: pip install customtkinter")
+    raise
+
+try:  # звуковая сирена доступна только на Windows
+    import winsound
+except ImportError:  # pragma: no cover
+    winsound = None
+
+
+# ---------------------------------------------------------------------------
+# Оформление и данные полигона
+# ---------------------------------------------------------------------------
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-# Спецификация 4 типов ЧС по типовому заданию хакатона
-HAZARDS_DB = {
-    'FIRE': {
-        'title': 'ОЧАГ ЛЕСНОГО ПОЖАРА',
-        'threat': 'CRITICAL',
-        'color_bgr': (0, 110, 255),
-        'color_hex': '#FF3D00',
-        'map_x': 390,
-        'map_y': 160,
-        'area_sq_m': 64.2,
-        'details': 'Верховое распространение, пламя 850°C'
-    },
-    'OIL': {
-        'title': 'РАЗЛИВ НЕФТЕПРОДУКТОВ',
-        'threat': 'WARNING',
-        'color_bgr': (30, 30, 40),
-        'color_hex': '#424242',
-        'map_x': 320,
-        'map_y': 310,
-        'area_sq_m': 118.0,
-        'details': 'Утечка дизельного топлива, угроза водоему'
-    },
-    'FLOOD': {
-        'title': 'ЗОНА ЗАТОПЛЕНИЯ / ПАВОДКА',
-        'threat': 'WARNING',
-        'color_bgr': (255, 170, 0),
-        'color_hex': '#00B0FF',
-        'map_x': 180,
-        'map_y': 330,
-        'area_sq_m': 340.5,
-        'details': 'Подъем уровня воды +1.8 м, затопление дороги'
-    },
-    'WASTE': {
-        'title': 'ТОКСИЧНЫЕ ОТХОДЫ / БОЧКИ',
-        'threat': 'CRITICAL',
-        'color_bgr': (0, 220, 220),
-        'color_hex': '#FFD600',
-        'map_x': 410,
-        'map_y': 340,
-        'area_sq_m': 28.0,
-        'details': 'Несанкционированная свалка, 12 бочек химреагентов'
-    }
+APP_TITLE = "ОКО МЧС — АРМ ОПЕРАТОРА ЦУКС"
+
+COLORS = {
+    "bg": "#0B0F14",
+    "panel": "#121821",
+    "panel_alt": "#0E141C",
+    "border": "#1E2733",
+    "grid": "#18212C",
+    "text": "#E6EDF3",
+    "muted": "#7C8DA6",
+    "accent": "#FF6B35",
+    "accent_dark": "#E85924",
+    "ok": "#22C55E",
+    "warn": "#F59E0B",
+    "crit": "#EF4444",
+    "info": "#38BDF8",
+    "drone": "#FFFFFF",
 }
 
-class OkoMchsOperatorApp(ctk.CTk):
-    def __init__(self):
+FONT_UI = "Segoe UI"
+FONT_MONO = "Consolas"
+
+#: Размеры арены в метрах: 200×200, база МЧС в центре (0, 0).
+WORLD_WIDTH_M = 200.0
+WORLD_HEIGHT_M = 200.0
+WORLD_HALF_M = 100.0
+
+#: Демонстрационные очаги ЧС (координаты в метрах полигона).
+HAZARDS_DB = {
+    "FIRE": {
+        "title": "Очаг лесного пожара",
+        "short": "ПОЖАР",
+        "threat": "CRITICAL",
+        "color": "#FF4D2E",
+        "x": 60.0,
+        "y": 28.0,
+        "area_sq_m": 64.2,
+        "details": "Верховое распространение, пламя до 850 °C",
+        "response": "Рекомендован наряд: 2 АЦ-40, автолестница АЛ-30, личный состав 8 чел.",
+    },
+    "OIL": {
+        "title": "Разлив нефтепродуктов",
+        "short": "НЕФТЬ",
+        "threat": "WARNING",
+        "color": "#8D6E63",
+        "x": -58.0,
+        "y": 30.0,
+        "area_sq_m": 118.0,
+        "details": "Утечка дизельного топлива, угроза водоёму",
+        "response": "Рекомендован наряд: 1 АЦ-40, скиммер, боновое ограждение, 6 чел.",
+    },
+    "FLOOD": {
+        "title": "Зона затопления",
+        "short": "ПАВОДОК",
+        "threat": "WARNING",
+        "color": "#29B6F6",
+        "x": 45.0,
+        "y": -56.0,
+        "area_sq_m": 340.5,
+        "details": "Подъём уровня воды +1,8 м, затоплена дорога",
+        "response": "Рекомендован наряд: 1 АСМ, 2 плавсредства, личный состав 6 чел.",
+    },
+    "WASTE": {
+        "title": "Токсичные отходы",
+        "short": "СВАЛКА",
+        "threat": "CRITICAL",
+        "color": "#FFD600",
+        "x": 68.0,
+        "y": -72.0,
+        "area_sq_m": 28.0,
+        "details": "Несанкционированная свалка, 12 бочек химреагентов",
+        "response": "Рекомендован наряд: 1 АЦ-40, разведгруппа 4 чел., вывоз отходов.",
+    },
+}
+
+#: Пороговые значения уровня угрозы (как в модуле зрения).
+THREAT_WARNING_M2 = 15.0
+THREAT_CRITICAL_M2 = 50.0
+
+#: Где искать протокол инцидента: автопилот пишет в reports/, ручной экспорт — рядом с АРМ.
+PROTOCOL_CANDIDATES = (
+    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "reports",
+                 "incident_protocol.json"),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "incident_protocol.json"),
+)
+
+THREAT_LABELS = {
+    "CRITICAL": ("КРИТИЧЕСКИЙ", COLORS["crit"]),
+    "WARNING": ("ПРЕДУПРЕЖДЕНИЕ", COLORS["warn"]),
+    "ADVISORY": ("ВНИМАНИЕ", COLORS["info"]),
+}
+
+
+def classify_threat(area_sq_m: float) -> str:
+    """Уровень угрозы по площади очага — та же шкала, что у модуля зрения."""
+    if area_sq_m >= THREAT_CRITICAL_M2:
+        return "CRITICAL"
+    if area_sq_m >= THREAT_WARNING_M2:
+        return "WARNING"
+    return "ADVISORY"
+
+
+def now_str(fmt: str = "%H:%M:%S") -> str:
+    """Текущее время строкой (для логов и HUD)."""
+    return datetime.datetime.now().strftime(fmt)
+
+
+# ---------------------------------------------------------------------------
+# Протокол инцидента
+# ---------------------------------------------------------------------------
+
+
+def normalize_protocol(raw: dict, path: str = "") -> dict:
+    """Приводит протокол к единому виду.
+
+    Поддерживаются оба формата: тот, что пишет автопилот
+    (``mchs_incident_report`` с вложенной телеметрией), и тот, что АРМ
+    выгружает вручную. Пульт не должен падать из-за разницы в схеме.
+    """
+    data = raw.get("mchs_incident_report", raw) or {}
+    geo = data.get("target_geo") or {}
+    telemetry = data.get("drone_telemetry") or {}
+    hazard = str(data.get("hazard_type") or data.get("hazard_code") or "ЧС")
+    threat = str(data.get("threat_level") or "WARNING").upper()
+
+    area = data.get("estimated_area_sq_m", data.get("estimated_area_sq_meters", 0.0))
+    try:
+        area = float(area)
+    except (TypeError, ValueError):
+        area = 0.0
+
+    return {
+        "incident_id": str(data.get("incident_id") or data.get("protocol_id") or "—"),
+        "hazard_type": hazard,
+        "hazard_code": str(data.get("hazard_code") or "").upper(),
+        "threat_level": threat,
+        "area_sq_m": area,
+        "latitude": geo.get("latitude", geo.get("lat")),
+        "longitude": geo.get("longitude", geo.get("lon")),
+        "x": geo.get("abs_x", telemetry.get("grid_x_m")),
+        "y": geo.get("abs_y", telemetry.get("grid_y_m")),
+        "altitude": telemetry.get("altitude_m"),
+        "battery": telemetry.get("battery_percent"),
+        "recommended_response": data.get("recommended_response") or "",
+        "timestamp": data.get("timestamp_msk") or data.get("timestamp") or "",
+        "path": path,
+    }
+
+
+class ProtocolWatcher:
+    """Следит за файлом протокола и сообщает, когда появился новый инцидент."""
+
+    def __init__(self, candidates=PROTOCOL_CANDIDATES):
+        self.candidates = list(candidates)
+        self.signature = None
+        self.last = None
+
+    def poll(self):
+        """Возвращает нормализованный протокол, если файл обновился, иначе None.
+
+        Приоритет у файла автопилота (``reports/incident_protocol.json``) —
+        его пишет борт. Резервный файл рядом с АРМ используется, только если
+        протокола от автопилота ещё нет.
+        """
+        path = None
+        for candidate in self.candidates:
+            if os.path.exists(candidate):
+                path = candidate
+                break
+        if path is None:
+            return None
+
+        try:
+            stamp = os.path.getmtime(path)
+        except OSError:
+            return None
+        signature = (os.path.abspath(path), round(stamp, 3))
+        if signature == self.signature:
+            return None
+
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                raw = json.load(handle)
+        except (OSError, ValueError):
+            return None
+
+        self.signature = signature
+        self.last = normalize_protocol(raw, path)
+        return self.last
+
+
+# ---------------------------------------------------------------------------
+# Видеопоток с борта
+# ---------------------------------------------------------------------------
+
+
+class VideoClient(threading.Thread):
+    """Тянет кадры с веб-сервера ноды зрения: MJPEG, затем резервный снимок."""
+
+    def __init__(self, host: str = "127.0.0.1", port: int = 8080, enabled: bool = True):
+        super().__init__(daemon=True)
+        self.base_url = f"http://{host}:{port}"
+        self.enabled = enabled
+        self.frame = None
+        self.lock = threading.Lock()
+        self.status = "OFFLINE"
+        self.fps = 0.0
+        self._stop = False
+
+    def stop(self) -> None:
+        """Просит поток завершиться."""
+        self._stop = True
+
+    def snapshot(self):
+        """Копия последнего кадра (или None)."""
+        with self.lock:
+            return None if self.frame is None else self.frame.copy()
+
+    def run(self) -> None:
+        """Основной цикл: MJPEG, при неудаче — опрос снимков."""
+        while not self._stop:
+            if not self.enabled:
+                self.status = "СИМУЛЯЦИЯ"
+                time.sleep(0.5)
+                continue
+            if self._consume_mjpeg():
+                continue
+            self._poll_snapshot()
+            time.sleep(0.5)
+
+    def _consume_mjpeg(self) -> bool:
+        """Читает multipart-поток /stream. Возвращает False, если поток недоступен."""
+        try:
+            response = urllib.request.urlopen(f"{self.base_url}/stream", timeout=2.0)
+        except Exception:
+            self.status = "SNAPSHOT"
+            return False
+
+        buffer = b""
+        frames = 0
+        started = time.time()
+        try:
+            while not self._stop:
+                chunk = response.read(4096)
+                if not chunk:
+                    break
+                buffer += chunk
+                start = buffer.find(b"\xff\xd8")
+                end = buffer.find(b"\xff\xd9", start + 2) if start >= 0 else -1
+                if start >= 0 and end > start:
+                    jpeg = buffer[start:end + 2]
+                    buffer = buffer[end + 2:]
+                    frame = cv2.imdecode(np.frombuffer(jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
+                    if frame is not None:
+                        with self.lock:
+                            self.frame = frame
+                        frames += 1
+                        elapsed = max(1e-6, time.time() - started)
+                        self.fps = frames / elapsed
+                        self.status = "MJPEG"
+                if len(buffer) > 4_000_000:  # защита от мусора в потоке
+                    buffer = buffer[-1_000_000:]
+        except Exception:
+            pass
+        finally:
+            try:
+                response.close()
+            except Exception:
+                pass
+
+        if frames == 0:
+            self.status = "SNAPSHOT"
+            return False
+        return True
+
+    def _poll_snapshot(self) -> None:
+        """Резервный режим: отдельные JPEG-снимки /snapshot.jpg."""
+        try:
+            with urllib.request.urlopen(f"{self.base_url}/snapshot.jpg", timeout=0.4) as response:
+                payload = np.frombuffer(response.read(), dtype=np.uint8)
+            frame = cv2.imdecode(payload, cv2.IMREAD_COLOR)
+            if frame is not None:
+                with self.lock:
+                    self.frame = frame
+                self.status = "SNAPSHOT"
+                self.fps = 0.0
+        except Exception:
+            self.status = "OFFLINE"
+
+
+# ---------------------------------------------------------------------------
+# Основное окно
+# ---------------------------------------------------------------------------
+
+
+class OkoMchsApp(ctk.CTk):
+    """Тактический пульт оперативного дежурного ЦУКС."""
+
+    def __init__(self, offline: bool = False, autostart: bool = False):
         super().__init__()
-        self.title("ОКО МЧС — АВТОНОМНЫЙ ПУЛЬТ ОПЕРАТОРА ЦУКС (ВЕРСИЯ 2.0)")
+
+        self.title(APP_TITLE)
+        self.configure(fg_color=COLORS["bg"])
         self._fit_window()
 
-        # Переменные полетной модели и состояния (Демо-режим активен по умолчанию)
-        self.is_flying = True
-        self.drone_x = 75.0
-        self.drone_y = 220.0
-        self.altitude = 1.0
+        # Состояние миссии
+        self.mission_active = False
+        self.phase = "ДЕЖУРСТВО НА БАЗЕ"
+        self.altitude = 0.0
+        self.speed = 0.0
         self.battery = 98.4
-        self.flight_speed = 3.2
-        self.flight_phase = "ВЗЛЕТ И ПАТРУЛИРОВАНИЕ СЕКТОРА"
-        self.thermal_mode = False
-        self.selected_hazard_key = 'FIRE'
-        self.hover_timer = 0
-        self.hazards_sequence = ['FIRE', 'OIL', 'FLOOD', 'WASTE']
-        self.seq_index = 0
-        self.active_detection = False
-        self.flight_trail = []
-        self.frame_counter = 0
+        self.drone_x = 0.0
+        self.drone_y = 0.0
+        self.heading_deg = 0.0
+        self.trail: list[tuple[float, float]] = []
+        self.hazard_key = "FIRE"
+        self.thermal = False
+        self.overlay = True
+        self.frame_no = 0
+        self.alarm_until = 0.0
+        self.detected = False
 
-        # Фоновое подключение к живому видеопотоку бортовой камеры Gazebo/ROS2 (порт 8080)
-        self.live_stream_frame = None
-        self.is_live_stream_active = False
-        self.stream_thread = threading.Thread(target=self.poll_live_stream, daemon=True)
-        self.stream_thread.start()
+        # Данные с борта
+        self.video = VideoClient(enabled=not offline)
+        self.video.start()
+        self.watcher = ProtocolWatcher()
+        self.protocol: dict | None = None
 
-        self.setup_ui()
-        self.log_event("Инициализация системы 'Око МЧС'. Связь с БПЛА установлена (RTK FIX).")
-        self.update_loop()
+        self._build_ui()
+        self._bind_keys()
 
-    def _fit_window(self):
-        """Подгоняем окно под реальный экран (масштаб Windows 125-150%)."""
-        self.update_idletasks()
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
-        width = max(980, min(1280, screen_w - 60))
-        height = max(660, min(820, screen_h - 100))
-        self.geometry(f"{width}x{height}+{max(0, (screen_w - width) // 2)}+{max(0, (screen_h - height) // 3)}")
-        self.minsize(980, 660)
-
-    def setup_ui(self):
-        # 1. Верхний командный баннер (Header)
-        header_frame = ctk.CTkFrame(self, height=55, corner_radius=0, fg_color="#12151B")
-        header_frame.pack(side="top", fill="x")
-
-        title_label = ctk.CTkLabel(
-            header_frame,
-            text="🚨 ОКО МЧС  |  КОМПЛЕКС АВТОНОМНОГО БПЛА-МОНИТОРИНГА ЧС  |  ЦУКС",
-            font=ctk.CTkFont(size=16, weight="bold"),
-            text_color="#FF6B35"
-        )
-        title_label.pack(side="left", padx=18, pady=8)
-
-        self.threat_badge = ctk.CTkLabel(
-            header_frame,
-            text="СТАТУС: ДЕЖУРСТВО",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            fg_color="#1E232E",
-            corner_radius=6,
-            padx=14, pady=5,
-            text_color="#00E5FF"
-        )
-        self.threat_badge.pack(side="right", padx=18, pady=8)
-
-        # 2. Главная рабочая панель (Две колонки: Карта слева, Сенсорная камера справа)
-        center_frame = ctk.CTkFrame(self, fg_color="transparent")
-        center_frame.pack(side="top", fill="both", expand=True, padx=12, pady=8)
-        center_frame.columnconfigure(0, weight=1)
-        center_frame.columnconfigure(1, weight=1)
-        center_frame.rowconfigure(0, weight=1)
-
-        # Левая колонка: Векторная тактическая карта
-        left_box = ctk.CTkFrame(center_frame, corner_radius=8, fg_color="#171A21")
-        left_box.grid(row=0, column=0, sticky="nsew", padx=(0, 6), pady=0)
-
-        map_header = ctk.CTkFrame(left_box, height=32, fg_color="transparent")
-        map_header.pack(fill="x", padx=10, pady=(6, 2))
-
-        ctk.CTkLabel(
-            map_header,
-            text="🗺 ТАКТИЧЕСКИЙ РАДАР ОБЛЕТА (ПОЛИГОН: 200×200 М)",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            text_color="#A4B3C6"
-        ).pack(side="left")
-
-        # Селектор целевого очага ЧС
-        self.hazard_selector = ctk.CTkSegmentedButton(
-            map_header,
-            values=["ПОЖАР", "НЕФТЬ", "ПАВОДОК", "СВАЛКА"],
-            command=self.on_hazard_select,
-            font=ctk.CTkFont(size=11, weight="bold"),
-            selected_color="#FF6B35",
-            selected_hover_color="#E85924"
-        )
-        self.hazard_selector.set("ПОЖАР")
-        self.hazard_selector.pack(side="right")
-
-        self.map_canvas = tk.Canvas(left_box, bg="#0E1116", highlightthickness=0)
-        self.map_canvas.pack(fill="both", expand=True, padx=10, pady=(0, 8))
-
-        # Правая колонка: Оптико-электронный комплекс
-        right_box = ctk.CTkFrame(center_frame, corner_radius=8, fg_color="#171A21")
-        right_box.grid(row=0, column=1, sticky="nsew", padx=(6, 0), pady=0)
-
-        cam_header = ctk.CTkFrame(right_box, height=32, fg_color="transparent")
-        cam_header.pack(fill="x", padx=10, pady=(6, 2))
-
-        ctk.CTkLabel(
-            cam_header,
-            text="📷 БОРТОВАЯ СЕНСОРНАЯ КАМЕРА (ИИ-ДЕТЕКЦИЯ OPENCV / HSV)",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            text_color="#A4B3C6"
-        ).pack(side="left")
-
-        self.btn_thermal = ctk.CTkButton(
-            cam_header,
-            text="🌡 ТЕПЛОВИЗОР FLIR",
-            font=ctk.CTkFont(size=11, weight="bold"),
-            fg_color="#37474F",
-            hover_color="#455A64",
-            width=140, height=26,
-            command=self.toggle_thermal
-        )
-        self.btn_thermal.pack(side="right")
-
-        self.cam_label = tk.Label(right_box, bg="#0A0C0F")
-        self.cam_label.pack(fill="both", expand=True, padx=10, pady=(0, 8))
-
-        # 3. Нижняя панель: Телеметрия, Журнал событий и Командные кнопки
-        bottom_frame = ctk.CTkFrame(self, height=170, corner_radius=8, fg_color="#171A21")
-        bottom_frame.pack(side="bottom", fill="x", padx=12, pady=(0, 10))
-
-        # Телеметрия (Слева)
-        tele_box = ctk.CTkFrame(bottom_frame, fg_color="#12151B", corner_radius=6)
-        tele_box.pack(side="left", fill="y", padx=10, pady=8)
-
-        ctk.CTkLabel(tele_box, text="ТЕЛЕМЕТРИЯ БПЛА", font=ctk.CTkFont(size=11, weight="bold"), text_color="#78909C").grid(row=0, column=0, columnspan=2, padx=10, pady=(4, 2), sticky="w")
-
-        self.lbl_alt = ctk.CTkLabel(tele_box, text="ВЫСОТА: 0.0 м", font=ctk.CTkFont(size=12, weight="bold"))
-        self.lbl_alt.grid(row=1, column=0, sticky="w", padx=10, pady=2)
-
-        self.lbl_speed = ctk.CTkLabel(tele_box, text="СКОРОСТЬ: 0.0 м/с", font=ctk.CTkFont(size=12, weight="bold"))
-        self.lbl_speed.grid(row=1, column=1, sticky="w", padx=10, pady=2)
-
-        self.lbl_bat = ctk.CTkLabel(tele_box, text="БАТАРЕЯ: 98%", font=ctk.CTkFont(size=12, weight="bold"), text_color="#00E676")
-        self.lbl_bat.grid(row=2, column=0, sticky="w", padx=10, pady=2)
-
-        self.lbl_gps = ctk.CTkLabel(tele_box, text="GPS: X=0.0m, Y=0.0m", font=ctk.CTkFont(size=12, weight="bold"))
-        self.lbl_gps.grid(row=2, column=1, sticky="w", padx=10, pady=2)
-
-        # Центральная консоль: Журнал оперативных событий
-        log_box = ctk.CTkFrame(bottom_frame, fg_color="#12151B", corner_radius=6)
-        log_box.pack(side="left", fill="both", expand=True, padx=8, pady=8)
-
-        ctk.CTkLabel(log_box, text="ЖУРНАЛ ОПЕРАТИВНОГО ДЕЖУРНОГО ЦУКС", font=ctk.CTkFont(size=11, weight="bold"), text_color="#78909C").pack(anchor="w", padx=10, pady=(4, 0))
-
-        self.log_textbox = ctk.CTkTextbox(log_box, font=ctk.CTkFont(family="Consolas", size=11), fg_color="transparent", activate_scrollbars=True)
-        self.log_textbox.pack(fill="both", expand=True, padx=6, pady=4)
-
-        # Командные кнопки (Справа)
-        btn_box = ctk.CTkFrame(bottom_frame, fg_color="transparent")
-        btn_box.pack(side="right", padx=10, pady=8)
-
-        self.btn_mission = ctk.CTkButton(
-            btn_box,
-            text="⏹ АВАРИЙНЫЙ ВОЗВРАТ (RTL)",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            fg_color="#D32F2F",
-            hover_color="#B71C1C",
-            width=210, height=36,
-            command=self.toggle_mission
-        )
-        self.btn_mission.grid(row=0, column=0, padx=4, pady=4)
-
-        self.btn_report = ctk.CTkButton(
-            btn_box,
-            text="📄 ПРОТОКОЛ ЦУКС (JSON)",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            fg_color="#1976D2",
-            hover_color="#1565C0",
-            width=210, height=32,
-            command=self.export_protocol
-        )
-        self.btn_report.grid(row=1, column=0, padx=4, pady=4)
-
-    def log_event(self, text: str):
-        now = datetime.datetime.now().strftime("%H:%M:%S")
-        msg = f"[{now}] {text}\n"
-        self.log_textbox.insert("end", msg)
-        self.log_textbox.see("end")
-
-    def on_hazard_select(self, val):
-        mapping = {"ПОЖАР": 'FIRE', "НЕФТЬ": 'OIL', "ПАВОДОК": 'FLOOD', "СВАЛКА": 'WASTE'}
-        self.selected_hazard_key = mapping.get(val, 'FIRE')
-        cfg = HAZARDS_DB[self.selected_hazard_key]
-        self.log_event(f"Выбран объект для инспекции: {cfg['title']} ({cfg['details']}).")
-
-    def toggle_thermal(self):
-        self.thermal_mode = not self.thermal_mode
-        if self.thermal_mode:
-            self.btn_thermal.configure(fg_color="#7B1FA2", hover_color="#6A1B9A", text="🌈 РЕЖИМ RGB (4K)")
-            self.log_event("Сенсор переключен в спектральный режим: FLIR LWIR 8-14 мкм.")
-        else:
-            self.btn_thermal.configure(fg_color="#37474F", hover_color="#455A64", text="🌡 ТЕПЛОВИЗОР FLIR")
-            self.log_event("Сенсор переключен в оптический режим: Sony IMX 4K RGB.")
-
-    def toggle_mission(self):
-        if not self.is_flying:
-            self.is_flying = True
-            self.flight_phase = "ВЗЛЕТ И ПАТРУЛИРОВАНИЕ СЕКТОРА"
-            self.btn_mission.configure(text="⏹ АВАРИЙНЫЙ ВОЗВРАТ (RTL)", fg_color="#D32F2F", hover_color="#B71C1C")
-            self.log_event("Команда оператора: ВЗЛЕТ НА ЭШЕЛОН H=8.0м. Начало патрулирования.")
-        else:
-            self.is_flying = False
-            self.flight_phase = "ВОЗВРАТ НА БАЗУ (RTL)"
-            self.btn_mission.configure(text="🚀 СТАРТ ПАТРУЛИРОВАНИЯ", fg_color="#FF6B35", hover_color="#E85924")
-            self.log_event("Команда оператора: ВОЗВРАТ НА БАЗУ (RTL).")
-
-    def export_protocol(self):
-        cfg = HAZARDS_DB[self.selected_hazard_key]
-        inc_id = f"INC-2026-{int(time.time()) % 10000:04d}"
-        report_data = {
-            "incident_id": inc_id,
-            "timestamp": datetime.datetime.now().isoformat(),
-            "station": "ЦУКС ГУ МЧС России",
-            "hazard_type": cfg['title'],
-            "threat_level": cfg['threat'],
-            "estimated_area_sq_m": cfg['area_sq_m'],
-            "drone_telemetry": {
-                "altitude_m": round(self.altitude, 1),
-                "battery_percent": int(self.battery),
-                "grid_x_m": round(self.drone_x / 10.0, 1),
-                "grid_y_m": round(self.drone_y / 10.0, 1)
-            },
-            "recommended_response": "Направить 2 пожарные автоцистерны АЦ-40, оповестить диспетчера района."
-        }
-
-        # Сохранение в текущую папку
-        report_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "incident_protocol.json")
-        try:
-            with open(report_path, "w", encoding="utf-8") as f:
-                json.dump(report_data, f, ensure_ascii=False, indent=2)
-            self.log_event(f"✅ Протокол {inc_id} успешно сохранен: {os.path.basename(report_path)}")
-        except Exception as e:
-            self.log_event(f"Ошибка сохранения отчета: {e}")
-
-    def update_loop(self):
-        self.frame_counter += 1
-        target_hazard = HAZARDS_DB[self.selected_hazard_key]
-        target_x = target_hazard['map_x']
-        target_y = target_hazard['map_y']
-
-        if self.is_flying:
-            # Набор высоты
-            if self.altitude < 10.0:
-                self.altitude += 0.4
-                self.flight_speed = 1.8
-                self.flight_phase = "НАБОР ВЫСОТЫ (ЭШЕЛОН 10М)"
-            else:
-                # Полет к целевой ЧС
-                dx = target_x - self.drone_x
-                dy = target_y - self.drone_y
-                dist = math.hypot(dx, dy)
-
-                if dist > 10.0:
-                    speed = 2.8
-                    self.drone_x += (dx / dist) * speed
-                    self.drone_y += (dy / dist) * speed
-                    self.flight_speed = 12.4
-                    self.flight_phase = f"ПАТРУЛИРОВАНИЕ: КУРС НА {target_hazard['title']}"
-                    self.active_detection = False
-                else:
-                    self.flight_speed = 0.4
-                    self.active_detection = True
-                    self.flight_phase = f"⚠️ ОБНАРУЖЕН {target_hazard['title']}!"
-                    self.threat_badge.configure(
-                        text=f"ТРЕВОГА: {target_hazard['threat']}!",
-                        fg_color="#D32F2F" if target_hazard['threat'] == 'CRITICAL' else "#F57C00",
-                        text_color="#FFFFFF"
-                    )
-                    self.hover_timer += 1
-                    if self.hover_timer == 1:
-                        self.log_event(f"🚨 АВТОДЕТЕКЦИЯ: {target_hazard['title']} | Площадь ~{target_hazard['area_sq_m']} м².")
-                    if self.hover_timer > 90:  # ~4.5 сек зависания и детального сканирования
-                        self.hover_timer = 0
-                        self.seq_index = (self.seq_index + 1) % len(self.hazards_sequence)
-                        self.selected_hazard_key = self.hazards_sequence[self.seq_index]
-                        map_ru = {'FIRE': 'ПОЖАР', 'OIL': 'НЕФТЬ', 'FLOOD': 'ПАВОДОК', 'WASTE': 'СВАЛКА'}
-                        self.hazard_selector.set(map_ru[self.selected_hazard_key])
-                        self.log_event(f"Патруль: переход к сектору {HAZARDS_DB[self.selected_hazard_key]['title']}.")
-
-            self.battery = max(12.0, self.battery - 0.015)
-            self.flight_trail.append((self.drone_x, self.drone_y))
-            if len(self.flight_trail) > 120:
-                self.flight_trail.pop(0)
-        else:
-            if self.altitude > 0:
-                self.altitude = max(0.0, self.altitude - 0.5)
-                self.drone_x += (75.0 - self.drone_x) * 0.05
-                self.drone_y += (220.0 - self.drone_y) * 0.05
-            else:
-                self.threat_badge.configure(text="СТАТУС: ДЕЖУРСТВО НА БАЗЕ", fg_color="#1E232E", text_color="#00E5FF")
-
-        # Обновление лейблов телеметрии
-        self.lbl_alt.configure(text=f"ВЫСОТА: {self.altitude:.1f} м")
-        self.lbl_speed.configure(text=f"СКОРОСТЬ: {self.flight_speed:.1f} м/с")
-        self.lbl_bat.configure(text=f"БАТАРЕЯ: {int(self.battery)}%")
-        self.lbl_gps.configure(text=f"ПОЛОЖЕНИЕ: X={self.drone_x/10.0:.1f}м, Y={self.drone_y/10.0:.1f}м")
-
-        self.draw_map()
-        self.draw_camera()
+        self.log("Пульт ЦУКС «Око МЧС» запущен. Ожидание данных с борта…")
+        if offline:
+            self.log("Режим без видеосервера: используется синтетический полигон.")
+        if autostart:
+            self.after(800, self.toggle_mission)
 
         self.after(40, self.update_loop)
 
-    def draw_map(self):
-        c = self.map_canvas
-        w = c.winfo_width()
-        h = c.winfo_height()
-        if w < 10 or h < 10:
+    # -- построение интерфейса -------------------------------------------
+
+    def _fit_window(self) -> None:
+        """Подгоняет окно под реальный экран (масштаб Windows 125-150 %)."""
+        self.update_idletasks()
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = max(1100, min(1400, screen_w - 60))
+        height = max(720, min(900, screen_h - 100))
+        x = max(0, (screen_w - width) // 2)
+        y = max(0, (screen_h - height) // 3)
+        self.geometry(f"{width}x{height}+{x}+{y}")
+        self.minsize(1100, 720)
+
+    def _card(self, parent, **kwargs) -> ctk.CTkFrame:
+        """Карточка с одинаковым оформлением."""
+        return ctk.CTkFrame(
+            parent,
+            fg_color=COLORS["panel"],
+            corner_radius=10,
+            border_width=1,
+            border_color=COLORS["border"],
+            **kwargs,
+        )
+
+    def _build_ui(self) -> None:
+        """Собирает шапку, рабочую область и нижнюю панель."""
+        self._build_header()
+
+        body = ctk.CTkFrame(self, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=12, pady=(8, 4))
+        body.grid_columnconfigure(0, weight=3, uniform="body")
+        body.grid_columnconfigure(1, weight=2, uniform="body")
+        body.grid_rowconfigure(0, weight=1)
+
+        self._build_map(body)
+        self._build_camera(body)
+        self._build_footer()
+
+    def _build_header(self) -> None:
+        """Верхняя строка: бренд, фаза миссии, статус связи, часы."""
+        header = ctk.CTkFrame(self, fg_color=COLORS["panel_alt"], corner_radius=0, height=64)
+        header.pack(fill="x")
+        header.pack_propagate(False)
+
+        brand = ctk.CTkFrame(header, fg_color="transparent")
+        brand.pack(side="left", padx=18, pady=8)
+
+        ctk.CTkLabel(
+            brand, text="◉ ОКО МЧС", font=ctk.CTkFont(FONT_UI, 22, "bold"), text_color=COLORS["accent"]
+        ).pack(side="left")
+        ctk.CTkLabel(
+            brand,
+            text="  АРМ ОПЕРАТОРА ЦУКС  •  автономный БПЛА-мониторинг ЧС",
+            font=ctk.CTkFont(FONT_UI, 12),
+            text_color=COLORS["muted"],
+        ).pack(side="left", pady=(6, 0))
+
+        right = ctk.CTkFrame(header, fg_color="transparent")
+        right.pack(side="right", padx=16, pady=10)
+
+        self.lbl_clock = ctk.CTkLabel(
+            right, text=now_str(), font=ctk.CTkFont(FONT_MONO, 13, "bold"), text_color=COLORS["muted"]
+        )
+        self.lbl_clock.pack(side="right", padx=(10, 0))
+
+        self.lbl_link = ctk.CTkLabel(
+            right,
+            text="● СВЯЗЬ: ПОИСК",
+            font=ctk.CTkFont(FONT_UI, 12, "bold"),
+            fg_color=COLORS["panel"],
+            corner_radius=6,
+            padx=12,
+            pady=5,
+            text_color=COLORS["muted"],
+        )
+        self.lbl_link.pack(side="right", padx=6)
+
+        self.lbl_phase = ctk.CTkLabel(
+            right,
+            text="ДЕЖУРСТВО",
+            font=ctk.CTkFont(FONT_UI, 12, "bold"),
+            fg_color=COLORS["panel"],
+            corner_radius=6,
+            padx=12,
+            pady=5,
+            text_color=COLORS["info"],
+        )
+        self.lbl_phase.pack(side="right", padx=6)
+
+        self.lbl_threat = ctk.CTkLabel(
+            right,
+            text="УГРОЗА: НЕТ",
+            font=ctk.CTkFont(FONT_UI, 12, "bold"),
+            fg_color=COLORS["panel"],
+            corner_radius=6,
+            padx=12,
+            pady=5,
+            text_color=COLORS["ok"],
+        )
+        self.lbl_threat.pack(side="right", padx=6)
+
+    def _build_map(self, parent) -> None:
+        """Левая колонка: тактическая карта и выбор объекта."""
+        card = self._card(parent)
+        card.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+
+        head = ctk.CTkFrame(card, fg_color="transparent")
+        head.pack(fill="x", padx=12, pady=(10, 4))
+
+        ctk.CTkLabel(
+            head, text="▣ ТАКТИЧЕСКАЯ КАРТА ПОЛИГОНА", font=ctk.CTkFont(FONT_UI, 12, "bold"),
+            text_color=COLORS["text"],
+        ).pack(side="left")
+
+        self.selector = ctk.CTkSegmentedButton(
+            head,
+            values=[HAZARDS_DB[key]["short"] for key in HAZARDS_DB],
+            command=self.on_hazard_select,
+            font=ctk.CTkFont(FONT_UI, 11, "bold"),
+            selected_color=COLORS["accent"],
+            selected_hover_color=COLORS["accent_dark"],
+            height=26,
+        )
+        self.selector.set(HAZARDS_DB[self.hazard_key]["short"])
+        self.selector.pack(side="right")
+
+        self.map_canvas = tk.Canvas(card, bg=COLORS["panel_alt"], highlightthickness=0, bd=0)
+        self.map_canvas.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+
+    def _build_camera(self, parent) -> None:
+        """Правая колонка: бортовая камера и режимы съёмки."""
+        card = self._card(parent)
+        card.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
+
+        head = ctk.CTkFrame(card, fg_color="transparent")
+        head.pack(fill="x", padx=12, pady=(10, 4))
+
+        ctk.CTkLabel(
+            head, text="▣ БОРТОВАЯ КАМЕРА", font=ctk.CTkFont(FONT_UI, 12, "bold"),
+            text_color=COLORS["text"],
+        ).pack(side="left")
+
+        self.btn_overlay = ctk.CTkButton(
+            head, text="ИИ-ОВЕРЛЕЙ", width=110, height=26,
+            font=ctk.CTkFont(FONT_UI, 11, "bold"),
+            fg_color=COLORS["panel_alt"], hover_color=COLORS["border"], text_color=COLORS["ok"],
+            command=self.toggle_overlay,
+        )
+        self.btn_overlay.pack(side="right", padx=(6, 0))
+
+        self.btn_thermal = ctk.CTkButton(
+            head, text="ТЕПЛОВИЗОР", width=120, height=26,
+            font=ctk.CTkFont(FONT_UI, 11, "bold"),
+            fg_color=COLORS["panel_alt"], hover_color=COLORS["border"], text_color=COLORS["text"],
+            command=self.toggle_thermal,
+        )
+        self.btn_thermal.pack(side="right")
+
+        self.cam_canvas = tk.Canvas(card, bg="#05080C", highlightthickness=0, bd=0)
+        self.cam_canvas.pack(fill="both", expand=True, padx=12, pady=(0, 6))
+
+        foot = ctk.CTkFrame(card, fg_color="transparent")
+        foot.pack(fill="x", padx=12, pady=(0, 10))
+
+        self.lbl_mode = ctk.CTkLabel(
+            foot, text="РЕЖИМ: ОПТИЧЕСКИЙ 4K", font=ctk.CTkFont(FONT_MONO, 11), text_color=COLORS["muted"]
+        )
+        self.lbl_mode.pack(side="left")
+
+        self.lbl_fps = ctk.CTkLabel(
+            foot, text="FPS: —", font=ctk.CTkFont(FONT_MONO, 11), text_color=COLORS["muted"]
+        )
+        self.lbl_fps.pack(side="right")
+
+    def _build_footer(self) -> None:
+        """Нижняя панель: телеметрия, карточка инцидента, журнал и кнопки."""
+        footer = ctk.CTkFrame(self, fg_color="transparent", height=250)
+        footer.pack(fill="x", padx=12, pady=(2, 12))
+        footer.grid_columnconfigure(0, weight=0, minsize=330)
+        footer.grid_columnconfigure(1, weight=2, uniform="footer")
+        footer.grid_columnconfigure(2, weight=3, uniform="footer")
+        footer.grid_rowconfigure(0, weight=1)
+
+        self._build_telemetry(footer)
+        self._build_incident_card(footer)
+        self._build_log(footer)
+
+    def _build_telemetry(self, parent) -> None:
+        """Карточка телеметрии."""
+        card = self._card(parent)
+        card.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+
+        ctk.CTkLabel(
+            card, text="ТЕЛЕМЕТРИЯ БПЛА", font=ctk.CTkFont(FONT_UI, 11, "bold"), text_color=COLORS["muted"]
+        ).pack(anchor="w", padx=14, pady=(10, 4))
+
+        grid = ctk.CTkFrame(card, fg_color="transparent")
+        grid.pack(fill="both", expand=True, padx=14, pady=(0, 10))
+        grid.grid_columnconfigure(1, weight=1)
+
+        self.tele_labels = {}
+        rows = (
+            ("alt", "ВЫСОТА", "0,0 м"),
+            ("speed", "СКОРОСТЬ", "0,0 м/с"),
+            ("coords", "КООРДИНАТЫ", "X 6,0 / Y 6,0 м"),
+            ("heading", "КУРС", "0°"),
+        )
+        for index, (key, title, value) in enumerate(rows):
+            ctk.CTkLabel(
+                grid, text=title, font=ctk.CTkFont(FONT_UI, 11), text_color=COLORS["muted"], anchor="w"
+            ).grid(row=index, column=0, sticky="w", pady=2)
+            label = ctk.CTkLabel(
+                grid, text=value, font=ctk.CTkFont(FONT_MONO, 12, "bold"), text_color=COLORS["text"], anchor="e"
+            )
+            label.grid(row=index, column=1, sticky="e", pady=2)
+            self.tele_labels[key] = label
+
+        ctk.CTkLabel(
+            card, text="ЗАРЯД АКБ", font=ctk.CTkFont(FONT_UI, 11), text_color=COLORS["muted"]
+        ).pack(anchor="w", padx=14)
+
+        self.battery_bar = ctk.CTkProgressBar(
+            card, height=12, corner_radius=6, progress_color=COLORS["ok"], fg_color=COLORS["panel_alt"]
+        )
+        self.battery_bar.pack(fill="x", padx=14, pady=(2, 2))
+        self.battery_bar.set(0.98)
+
+        self.lbl_battery = ctk.CTkLabel(
+            card, text="98 %", font=ctk.CTkFont(FONT_MONO, 12, "bold"), text_color=COLORS["ok"]
+        )
+        self.lbl_battery.pack(anchor="e", padx=14, pady=(0, 8))
+
+    def _build_incident_card(self, parent) -> None:
+        """Карточка инцидента и кнопки управления."""
+        card = self._card(parent)
+        card.grid(row=0, column=1, sticky="nsew", padx=6)
+
+        head = ctk.CTkFrame(card, fg_color="transparent")
+        head.pack(fill="x", padx=14, pady=(10, 4))
+        ctk.CTkLabel(
+            head, text="ПРОТОКОЛ ИНЦИДЕНТА", font=ctk.CTkFont(FONT_UI, 11, "bold"), text_color=COLORS["muted"]
+        ).pack(side="left")
+
+        self.lbl_incident_id = ctk.CTkLabel(
+            head, text="—", font=ctk.CTkFont(FONT_MONO, 12, "bold"), text_color=COLORS["info"]
+        )
+        self.lbl_incident_id.pack(side="right")
+
+        self.lbl_incident_type = ctk.CTkLabel(
+            card, text="Инцидентов не зафиксировано", font=ctk.CTkFont(FONT_UI, 15, "bold"),
+            text_color=COLORS["text"], anchor="w",
+        )
+        self.lbl_incident_type.pack(fill="x", padx=14, pady=(2, 2))
+
+        self.lbl_incident_meta = ctk.CTkLabel(
+            card, text="Ожидание данных от борта", font=ctk.CTkFont(FONT_UI, 11),
+            text_color=COLORS["muted"], anchor="w", justify="left",
+        )
+        self.lbl_incident_meta.pack(fill="x", padx=14, pady=(0, 4))
+
+        self.lbl_incident_response = ctk.CTkLabel(
+            card, text="", font=ctk.CTkFont(FONT_UI, 11), text_color=COLORS["warn"],
+            anchor="w", justify="left", wraplength=420,
+        )
+        self.lbl_incident_response.pack(fill="x", padx=14, pady=(0, 6))
+
+        buttons = ctk.CTkFrame(card, fg_color="transparent")
+        buttons.pack(fill="x", padx=14, pady=(0, 12), side="bottom")
+
+        self.btn_mission = ctk.CTkButton(
+            buttons, text="▶ СТАРТ ПАТРУЛИРОВАНИЯ", height=38,
+            font=ctk.CTkFont(FONT_UI, 12, "bold"),
+            fg_color=COLORS["accent"], hover_color=COLORS["accent_dark"],
+            command=self.toggle_mission,
+        )
+        self.btn_mission.pack(fill="x", pady=(0, 6))
+
+        row = ctk.CTkFrame(buttons, fg_color="transparent")
+        row.pack(fill="x")
+
+        self.btn_json = ctk.CTkButton(
+            row, text="JSON", height=30, font=ctk.CTkFont(FONT_UI, 11, "bold"),
+            fg_color=COLORS["info"], hover_color="#0284C7", command=lambda: self.export_protocol("json"),
+        )
+        self.btn_json.pack(side="left", expand=True, fill="x", padx=(0, 3))
+
+        self.btn_txt = ctk.CTkButton(
+            row, text="БЛАНК TXT", height=30, font=ctk.CTkFont(FONT_UI, 11, "bold"),
+            fg_color=COLORS["panel_alt"], hover_color=COLORS["border"], command=lambda: self.export_protocol("txt"),
+        )
+        self.btn_txt.pack(side="left", expand=True, fill="x", padx=(3, 0))
+
+        ctk.CTkLabel(
+            card,
+            text="Space — старт/RTL  ·  T — тепловизор  ·  O — оверлей  ·  E — экспорт",
+            font=ctk.CTkFont(FONT_UI, 9),
+            text_color=COLORS["muted"],
+        ).pack(side="bottom", pady=(0, 4))
+
+    def _build_log(self, parent) -> None:
+        """Карточка журнала оперативного дежурного."""
+        card = self._card(parent)
+        card.grid(row=0, column=2, sticky="nsew", padx=(6, 0))
+
+        ctk.CTkLabel(
+            card, text="ЖУРНАЛ ОПЕРАТИВНОГО ДЕЖУРНОГО", font=ctk.CTkFont(FONT_UI, 11, "bold"),
+            text_color=COLORS["muted"],
+        ).pack(anchor="w", padx=14, pady=(10, 4))
+
+        self.log_box = ctk.CTkTextbox(
+            card, font=ctk.CTkFont(FONT_MONO, 11), fg_color=COLORS["panel_alt"],
+            corner_radius=8, wrap="word",
+        )
+        self.log_box.pack(fill="both", expand=True, padx=14, pady=(0, 12))
+        self.log_box.configure(state="disabled")
+
+    # -- действия оператора -----------------------------------------------
+
+    def _bind_keys(self) -> None:
+        """Горячие клавиши."""
+        self.bind("<space>", lambda _event: self.toggle_mission())
+        self.bind("<Key-t>", lambda _event: self.toggle_thermal())
+        self.bind("<Key-o>", lambda _event: self.toggle_overlay())
+        self.bind("<Key-e>", lambda _event: self.export_protocol("json"))
+        self.bind("<F11>", lambda _event: self.attributes("-fullscreen", True))
+        self.bind("<Escape>", lambda _event: self.attributes("-fullscreen", False))
+
+    def log(self, text: str) -> None:
+        """Добавляет строку в журнал (потокобезопасно через after)."""
+        line = f"[{now_str()}] {text}\n"
+
+        def append():
+            self.log_box.configure(state="normal")
+            self.log_box.insert("end", line)
+            self.log_box.see("end")
+            self.log_box.configure(state="disabled")
+
+        try:
+            self.after(0, append)
+        except Exception:
+            pass
+
+    def on_hazard_select(self, value: str) -> None:
+        """Переключение демонстрационного объекта."""
+        for key, hazard in HAZARDS_DB.items():
+            if hazard["short"] == value:
+                self.hazard_key = key
+                self.log(f"Объект инспекции: {hazard['title']} ({hazard['details']}).")
+                return
+
+    def toggle_thermal(self) -> None:
+        """Включает и выключает палитру тепловизора."""
+        self.thermal = not self.thermal
+        if self.thermal:
+            self.btn_thermal.configure(fg_color="#6B21A8", text_color="#FFFFFF", text="ОПТИКА 4K")
+            self.lbl_mode.configure(text="РЕЖИМ: ТЕПЛОВИЗОР LWIR 8–14 мкм", text_color=COLORS["warn"])
+            self.log("Камера переключена в тепловизионный режим (FLIR LWIR).")
+        else:
+            self.btn_thermal.configure(fg_color=COLORS["panel_alt"], text="ТЕПЛОВИЗОР")
+            self.lbl_mode.configure(text="РЕЖИМ: ОПТИЧЕСКИЙ 4K", text_color=COLORS["muted"])
+            self.log("Камера переключена в оптический режим (Sony IMX 4K).")
+
+    def toggle_overlay(self) -> None:
+        """Включает и выключает ИИ-оверлей на видео."""
+        self.overlay = not self.overlay
+        color = COLORS["ok"] if self.overlay else COLORS["muted"]
+        self.btn_overlay.configure(text_color=color)
+        self.log(f"ИИ-оверлей детекции: {'включён' if self.overlay else 'выключен'}.")
+
+    def toggle_mission(self) -> None:
+        """Старт патрулирования и аварийный возврат (RTL)."""
+        if not self.mission_active:
+            self.mission_active = True
+            self.detected = False
+            self.altitude = 0.0
+            self.phase = "ВЗЛЁТ И ПАТРУЛИРОВАНИЕ"
+            self.btn_mission.configure(text="■ АВАРИЙНЫЙ ВОЗВРАТ (RTL)", fg_color=COLORS["crit"])
+            self.log("Команда: взлёт на эшелон 8,0 м, начало патрулирования сектора.")
+        else:
+            self.mission_active = False
+            self.phase = "ВОЗВРАТ НА БАЗУ (RTL)"
+            self.btn_mission.configure(text="▶ СТАРТ ПАТРУЛИРОВАНИЯ", fg_color=COLORS["accent"])
+            self.log("Команда: возврат на базу (RTL), посадка в точке старта.")
+
+    # -- протокол ----------------------------------------------------------
+
+    def apply_protocol(self, protocol: dict) -> None:
+        """Показывает новый протокол: тревога, карточка, подсветка на карте."""
+        self.protocol = protocol
+        threat = protocol["threat_level"]
+        label, color = THREAT_LABELS.get(threat, (threat, COLORS["warn"]))
+
+        self.lbl_threat.configure(text=f"УГРОЗА: {label}", fg_color=color, text_color="#0B0F14")
+        self.lbl_incident_id.configure(text=protocol["incident_id"], text_color=color)
+        self.lbl_incident_type.configure(text=protocol["hazard_type"], text_color=color)
+
+        line1 = f"Уровень: {label}"
+        if protocol["area_sq_m"]:
+            line1 += f"   •   Площадь: {protocol['area_sq_m']:.1f} м²"
+        coords = []
+        if protocol["latitude"] is not None and protocol["longitude"] is not None:
+            coords.append(f"WGS-84: {protocol['latitude']:.5f}, {protocol['longitude']:.5f}")
+        if protocol["x"] is not None and protocol["y"] is not None:
+            coords.append(f"полигон: X {protocol['x']:.1f} / Y {protocol['y']:.1f} м")
+        self.lbl_incident_meta.configure(text=line1 + "\n" + "   •   ".join(coords))
+        self.lbl_incident_response.configure(text=protocol["recommended_response"] or "")
+
+        self.alarm_until = time.time() + 8.0
+        self.log(f"⚠ ПРОТОКОЛ {protocol['incident_id']}: {protocol['hazard_type']}, {label}.")
+        self._beep()
+
+        # Если пришёл протокол, значит борт на месте — показываем инспекцию.
+        self.phase = "ИНСПЕКЦИЯ ОЧАГА"
+        # Телеметрию берём из протокола только когда своего полёта нет:
+        # иначе цифры борта «дёргали» бы демонстрационную модель.
+        if not self.mission_active:
+            if protocol["altitude"]:
+                self.altitude = float(protocol["altitude"])
+            if protocol["battery"]:
+                self.battery = float(protocol["battery"])
+
+    def _beep(self) -> None:
+        """Короткий звуковой сигнал тревоги (Windows)."""
+        if winsound is None:
+            return
+        try:
+            winsound.Beep(1400, 180)
+            winsound.Beep(1000, 180)
+        except Exception:
+            pass
+
+    def build_protocol_dict(self) -> dict:
+        """Собирает протокол для ручного экспорта (схема совпадает с автопилотом)."""
+        hazard = HAZARDS_DB[self.hazard_key]
+        stamp = datetime.datetime.now()
+        return {
+            "incident_id": f"INC-{stamp:%Y}-{stamp:%H%M}",
+            "timestamp": stamp.isoformat(timespec="seconds"),
+            "timestamp_msk": stamp.strftime("%d.%m.%Y %H:%M:%S"),
+            "station": "ЦУКС ГУ МЧС России",
+            "hazard_type": hazard["title"].upper(),
+            "hazard_code": self.hazard_key,
+            "threat_level": hazard["threat"],
+            "estimated_area_sq_m": hazard["area_sq_m"],
+            "target_geo": {
+                "abs_x": round(self.drone_x, 1),
+                "abs_y": round(self.drone_y, 1),
+                "rel_x": 0.0,
+                "rel_y": 0.0,
+            },
+            "confidence": 0.96,
+            "drone_telemetry": {
+                "drone_id": "MCHS-UAV-04",
+                "altitude_m": round(self.altitude, 1),
+                "battery_percent": round(self.battery, 0),
+                "grid_x_m": round(self.drone_x, 1),
+                "grid_y_m": round(self.drone_y, 1),
+            },
+            "recommended_response": hazard["response"],
+            "recommended_actions": [
+                "Передать координаты в ЦУКС и ЕДДС района",
+                "Оповестить оперативного дежурного ПСЧ",
+                f"Учесть характер ЧС: {hazard['details']}",
+            ],
+            "protocol_version": "3.0",
+        }
+
+    def export_protocol(self, kind: str = "json") -> None:
+        """Сохраняет протокол в reports/ (JSON или печатный бланк TXT)."""
+        data = self.build_protocol_dict()
+        out_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "reports"
+        )
+        try:
+            os.makedirs(out_dir, exist_ok=True)
+            stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            if kind == "json":
+                path = os.path.join(out_dir, f"incident_protocol_{stamp}.json")
+                with open(path, "w", encoding="utf-8") as handle:
+                    json.dump(data, handle, ensure_ascii=False, indent=2)
+            else:
+                path = os.path.join(out_dir, f"incident_protocol_{stamp}.txt")
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write(self.render_blank(data))
+            self.log(f"Протокол сохранён: {path}")
+        except OSError as error:
+            self.log(f"Не удалось сохранить протокол: {error}")
+
+    @staticmethod
+    def render_blank(data: dict) -> str:
+        """Печатный бланк оперативного дежурного."""
+        geo = data["target_geo"]
+        telemetry = data["drone_telemetry"]
+        lines = [
+            "=" * 72,
+            f"ПРОТОКОЛ ИНЦИДЕНТА № {data['incident_id']}".center(72),
+            data["station"].center(72),
+            "=" * 72,
+            f"Дата и время фиксации ....... {data['timestamp_msk']} (МСК)",
+            f"Тип чрезвычайной ситуации ... {data['hazard_type']}",
+            f"Уровень угрозы .............. {data['threat_level']}",
+            f"Координаты очага (X, Y) ..... {geo['abs_x']:.1f} м, {geo['abs_y']:.1f} м",
+            f"Площадь поражения ........... {data['estimated_area_sq_m']:.1f} м²",
+            f"Борт ........................ {telemetry['drone_id']}",
+            f"Высота / заряд АКБ .......... {telemetry['altitude_m']:.1f} м / {telemetry['battery_percent']:.0f} %",
+            "-" * 72,
+            "Рекомендуемый наряд спасательных сил:",
+            "   " + data["recommended_response"],
+            "-" * 72,
+            "Рекомендуемые действия:",
+        ]
+        lines += [f"   {index}. {action}" for index, action in enumerate(data["recommended_actions"], 1)]
+        lines += [
+            "=" * 72,
+            "Оперативный дежурный ЦУКС: ______________ / ____________________ /",
+            "Документ сформирован автоматически АРМ «Око МЧС»",
+            "=" * 72,
+            "",
+        ]
+        return "\n".join(lines)
+
+    # -- главный цикл ------------------------------------------------------
+
+    def update_loop(self) -> None:
+        """Обновляет данные, карту и видео ~25 раз в секунду."""
+        try:
+            self.frame_no += 1
+
+            protocol = self.watcher.poll()
+            if protocol is not None:
+                self.apply_protocol(protocol)
+
+            self._step_flight_model()
+            self._refresh_labels()
+            self._draw_map()
+            self._draw_camera()
+        except Exception as error:  # пульт не должен падать из-за одного кадра
+            if self.frame_no % 100 == 0:
+                self.log(f"Сбой отрисовки: {type(error).__name__}: {error}")
+
+        self.after(40, self.update_loop)
+
+    def _step_flight_model(self) -> None:
+        """Простая модель полёта для демонстрации, пока нет телеметрии с борта."""
+        hazard = HAZARDS_DB[self.hazard_key]
+
+        if self.mission_active:
+            if self.altitude < 8.0:
+                self.altitude = min(8.0, self.altitude + 0.35)
+                self.speed = 1.2
+                self.phase = "НАБОР ВЫСОТЫ 8,0 м"
+            else:
+                dx, dy = hazard["x"] - self.drone_x, hazard["y"] - self.drone_y
+                distance = math.hypot(dx, dy)
+                if distance > 2.5:
+                    step = min(2.2, distance)
+                    self.drone_x += dx / distance * step
+                    self.drone_y += dy / distance * step
+                    self.heading_deg = math.degrees(math.atan2(dy, dx)) % 360.0
+                    self.speed = 12.0
+                    self.phase = f"ПАТРУЛИРОВАНИЕ: КУРС НА {hazard['short']}"
+                else:
+                    self.speed = 0.0
+                    self.phase = f"ИНСПЕКЦИЯ: {hazard['short']}"
+                    if not self.detected:
+                        self.detected = True
+                        self._simulate_detection()
+            self.battery = max(8.0, self.battery - 0.012)
+        else:
+            if self.altitude > 0.0:
+                self.altitude = max(0.0, self.altitude - 0.45)
+                self.drone_x += (0.0 - self.drone_x) * 0.04
+                self.drone_y += (0.0 - self.drone_y) * 0.04
+                self.speed = 4.0
+                self.phase = "ВОЗВРАТ И ПОСАДКА (RTL)"
+            else:
+                self.speed = 0.0
+                if self.alarm_until < time.time():
+                    self.phase = "ДЕЖУРСТВО НА БАЗЕ"
+
+        if self.altitude > 0.5:
+            self.trail.append((self.drone_x, self.drone_y))
+            if len(self.trail) > 400:
+                self.trail.pop(0)
+
+    def _simulate_detection(self) -> None:
+        """Демонстрационная детекция: пульт сам формирует протокол по очагу.
+
+        Нужна, чтобы АРМ можно было показать без запущенного борта: дрон
+        выходит на объект, пульт пишет ``reports/incident_protocol.json`` и
+        включает тревогу точно так же, как при реальном событии от зрения.
+        """
+        hazard = HAZARDS_DB[self.hazard_key]
+        data = self.build_protocol_dict()
+        data["estimated_area_sq_m"] = hazard["area_sq_m"]
+        data["threat_level"] = hazard["threat"]
+        data["target_geo"].update(
+            {"abs_x": round(hazard["x"], 1), "abs_y": round(hazard["y"], 1)}
+        )
+
+        out_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "reports"
+        )
+        try:
+            os.makedirs(out_dir, exist_ok=True)
+            path = os.path.join(out_dir, "incident_protocol.json")
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(data, handle, ensure_ascii=False, indent=2)
+            # Файл написали мы сами — watcher не должен поднимать тревогу второй раз.
+            self.watcher.signature = (os.path.abspath(path), round(os.path.getmtime(path), 3))
+        except OSError as error:
+            self.log(f"Не удалось сохранить протокол: {error}")
+
+        self.apply_protocol(normalize_protocol(data, locals().get("path", "")))
+
+    def _refresh_labels(self) -> None:
+        """Обновляет плашки, телеметрию и индикатор связи."""
+        self.lbl_clock.configure(text=now_str())
+
+        link = self.video.status
+        link_color = COLORS["ok"] if link in ("MJPEG", "SNAPSHOT") else COLORS["warn"]
+        self.lbl_link.configure(text=f"● СВЯЗЬ: {link}", text_color=link_color)
+        self.lbl_phase.configure(text=self.phase.split(":")[0])
+
+        self.tele_labels["alt"].configure(text=f"{self.altitude:.1f} м")
+        self.tele_labels["speed"].configure(text=f"{self.speed:.1f} м/с")
+        self.tele_labels["coords"].configure(text=f"X {self.drone_x:.1f} / Y {self.drone_y:.1f} м")
+        self.tele_labels["heading"].configure(text=f"{self.heading_deg:.0f}°")
+
+        self.battery_bar.set(max(0.0, min(1.0, self.battery / 100.0)))
+        battery_color = COLORS["ok"] if self.battery > 40 else (COLORS["warn"] if self.battery > 20 else COLORS["crit"])
+        self.battery_bar.configure(progress_color=battery_color)
+        self.lbl_battery.configure(text=f"{self.battery:.0f} %", text_color=battery_color)
+
+        if self.alarm_until > time.time():
+            # Мигание тревоги в шапке.
+            if int(self.frame_no / 8) % 2 == 0:
+                self.lbl_threat.configure(fg_color=COLORS["crit"], text_color="#0B0F14")
+            else:
+                self.lbl_threat.configure(fg_color=COLORS["panel"], text_color=COLORS["crit"])
+
+        fps = f"{self.video.fps:.0f}" if self.video.fps else "—"
+        self.lbl_fps.configure(text=f"FPS: {fps}  ·  {self.video.status}")
+
+    # -- отрисовка ---------------------------------------------------------
+
+    def _world_to_canvas(self, x_m: float, y_m: float) -> tuple[float, float]:
+        """Переводит метры полигона в пиксели карты (ось Y направлена вверх)."""
+        width = max(1, self.map_canvas.winfo_width())
+        height = max(1, self.map_canvas.winfo_height())
+        left, top, right, bottom = 34, 26, width - 18, height - 30
+        px = left + ((x_m + WORLD_HALF_M) / WORLD_WIDTH_M) * (right - left)
+        py = top + ((WORLD_HALF_M - y_m) / WORLD_HEIGHT_M) * (bottom - top)
+        return px, py
+
+    def _draw_map(self) -> None:
+        """Рисует полигон, маршрут, очаги, трек и борт."""
+        canvas = self.map_canvas
+        width, height = canvas.winfo_width(), canvas.winfo_height()
+        if width < 80 or height < 80:
             return
 
-        c.delete("all")
+        canvas.delete("all")
+        left, top, right, bottom = 34, 26, width - 18, height - 30
 
-        # 1. Сетка координат (метры полигона)
-        for x in range(0, w, 40):
-            c.create_line(x, 0, x, h, fill="#141820", width=1)
-        for y in range(0, h, 40):
-            c.create_line(0, y, w, y, fill="#141820", width=1)
+        # Сетка каждые 25 м; подписи от -100 до 100
+        for meter in range(-100, 101, 25):
+            px, _ = self._world_to_canvas(float(meter), 0.0)
+            canvas.create_line(px, top, px, bottom, fill=COLORS["grid"])
+            canvas.create_text(px, bottom + 12, text=f"{meter}", fill=COLORS["muted"],
+                               font=(FONT_MONO, 8))
+        for meter in range(-100, 101, 25):
+            _, py = self._world_to_canvas(0.0, float(meter))
+            canvas.create_line(left, py, right, py, fill=COLORS["grid"])
+            canvas.create_text(left - 16, py, text=f"{meter}", fill=COLORS["muted"],
+                               font=(FONT_MONO, 8))
 
-        # 2. Границы полигона патрулирования (50×50 м)
-        c.create_rectangle(50, 40, w - 30, h - 40, outline="#2E4057", width=1, dash=(3, 3))
-        c.create_text(60, 52, text="ЗОНА ПАТРУЛИРОВАНИЯ БПЛА [200×200 М]", fill="#5C7080", font=("Consolas", 9, "bold"), anchor="w")
+        # Компас: север вверху карты
+        canvas.create_line(left + 14, top + 12, left + 14, top + 34, fill=COLORS["muted"], arrow=tk.LAST)
+        canvas.create_text(left + 22, top + 12, text="С", fill=COLORS["muted"], font=(FONT_UI, 8, "bold"))
 
-        # 3. Отрисовка 4 объектов ЧС на карте
-        for key, hzd in HAZARDS_DB.items():
-            hx = hzd['map_x']
-            hy = hzd['map_y']
-            is_target = (key == self.selected_hazard_key)
+        canvas.create_rectangle(left, top, right, bottom, outline="#26364A", dash=(4, 4))
+        canvas.create_text(left + 6, top - 10, text="АРЕНА 200×200 м · БАЗА В ЦЕНТРЕ",
+                           fill=COLORS["muted"], font=(FONT_UI, 9, "bold"), anchor="w")
 
-            # Маркер очага
-            r = 16 if not is_target else 20 + int(math.sin(self.frame_counter * 0.25) * 4)
-            c.create_oval(hx - r, hy - r, hx + r, hy + r, fill=hzd['color_hex'], outline="#FFFFFF" if is_target else "", width=2 if is_target else 0)
-            c.create_text(hx, hy + r + 10, text=key, fill=hzd['color_hex'], font=("Segoe UI", 9, "bold"), justify="center")
+        # Маршрут облёта очагов (точки наблюдения из mchs_pilot_route.py)
+        route = [(42.0, 28.0), (-76.0, 30.0), (27.0, -56.0), (50.0, -72.0), (0.0, 0.0)]
+        route_points = []
+        for waypoint_x, waypoint_y in route:
+            route_points.extend(self._world_to_canvas(waypoint_x, waypoint_y))
+        canvas.create_line(*route_points, fill="#1F3A5F", width=1, dash=(4, 6))
+        for waypoint_x, waypoint_y in route[:-1]:
+            wx, wy = self._world_to_canvas(waypoint_x, waypoint_y)
+            canvas.create_oval(wx - 3, wy - 3, wx + 3, wy + 3, outline="#1F3A5F")
 
-        # 4. База МЧС и вертодром
-        c.create_rectangle(60, 205, 90, 235, fill="#1976D2", outline="#64B5F6", width=2)
-        c.create_text(75, 245, text="БАЗА МЧС (СТАРТ)", fill="#90CAF9", font=("Segoe UI", 8, "bold"))
+        # База
+        base = self._world_to_canvas(0.0, 0.0)
+        canvas.create_rectangle(base[0] - 10, base[1] - 10, base[0] + 10, base[1] + 10,
+                                fill="#1D4ED8", outline="#60A5FA")
+        canvas.create_text(base[0], base[1] + 20, text="БАЗА", fill="#93C5FD", font=(FONT_UI, 8, "bold"))
 
-        # 5. Траектория полета дрона
-        if len(self.flight_trail) > 1:
-            for i in range(len(self.flight_trail) - 1):
-                c.create_line(self.flight_trail[i][0], self.flight_trail[i][1],
-                              self.flight_trail[i+1][0], self.flight_trail[i+1][1],
-                              fill="#00E5FF", width=2)
+        # Очаги ЧС
+        for key, hazard in HAZARDS_DB.items():
+            px, py = self._world_to_canvas(hazard["x"], hazard["y"])
+            selected = key == self.hazard_key
+            radius = 14 if selected else 9
+            if selected:
+                radius += int(math.sin(self.frame_no * 0.25) * 3)
+            canvas.create_oval(px - radius, py - radius, px + radius, py + radius,
+                               fill=hazard["color"], outline="#FFFFFF" if selected else hazard["color"])
+            canvas.create_text(px, py + radius + 10, text=hazard["short"], fill=hazard["color"],
+                               font=(FONT_UI, 8, "bold"))
 
-        # 6. Конус обзора сенсора
-        if self.altitude > 2.0:
-            cone_r = int(self.altitude * 2.5)
-            c.create_oval(self.drone_x - cone_r, self.drone_y - cone_r,
-                          self.drone_x + cone_r, self.drone_y + cone_r,
-                          outline="#00E5FF", width=1, dash=(2, 4))
+        # Отметка очага из протокола
+        if self.protocol and self.protocol.get("x") is not None and self.protocol.get("y") is not None:
+            px, py = self._world_to_canvas(float(self.protocol["x"]), float(self.protocol["y"]))
+            canvas.create_oval(px - 24, py - 24, px + 24, py + 24, outline=COLORS["crit"], width=2)
+            canvas.create_text(px, py - 32, text=self.protocol["incident_id"], fill=COLORS["crit"],
+                               font=(FONT_MONO, 9, "bold"))
 
-        # 7. Иконка БПЛА
-        dx, dy = self.drone_x, self.drone_y
-        arm = 12
-        c.create_line(dx - arm, dy - arm, dx + arm, dy + arm, fill="#FFFFFF", width=3)
-        c.create_line(dx - arm, dy + arm, dx + arm, dy - arm, fill="#FFFFFF", width=3)
-        for px, py in [(dx-arm, dy-arm), (dx+arm, dy-arm), (dx-arm, dy+arm), (dx+arm, dy+arm)]:
-            c.create_oval(px-4, py-4, px+4, py+4, fill="#263238", outline="#00E5FF", width=1)
-        c.create_oval(dx-5, dy-5, dx+5, dy+5, fill="#FF6B35", outline="#FFFFFF", width=2)
+        # Трек
+        if len(self.trail) > 1:
+            points = []
+            for x_m, y_m in self.trail:
+                points.extend(self._world_to_canvas(x_m, y_m))
+            canvas.create_line(*points, fill=COLORS["info"], width=2, smooth=True)
 
-    def poll_live_stream(self):
-        """Опрос веб-потока камеры бортового компьютера БПЛА (порт 8080)."""
-        while True:
-            try:
-                req = urllib.request.Request("http://127.0.0.1:8080/snapshot.jpg", headers={'User-Agent': 'MchsOperatorApp'})
-                with urllib.request.urlopen(req, timeout=0.25) as response:
-                    img_array = np.asarray(bytearray(response.read()), dtype=np.uint8)
-                    frame = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-                    if frame is not None:
-                        self.live_stream_frame = frame
-                        self.is_live_stream_active = True
-            except Exception:
-                self.is_live_stream_active = False
-            time.sleep(0.04)  # ~25 FPS опрос
+        # Конус обзора и борт
+        dx, dy = self._world_to_canvas(self.drone_x, self.drone_y)
+        if self.altitude > 1.0:
+            cone = 8 + self.altitude * 2.4
+            canvas.create_oval(dx - cone, dy - cone, dx + cone, dy + cone,
+                               outline="#0E7490", dash=(2, 5))
 
-    def draw_camera(self):
-        h, w = 360, 520
+        radius = 11
+        angle = math.radians(self.heading_deg)
+        nose_x = dx + math.cos(angle) * (radius + 6)
+        nose_y = dy - math.sin(angle) * (radius + 6)
+        canvas.create_line(dx, dy, nose_x, nose_y, fill=COLORS["accent"], width=2)
 
-        # Если доступен реальный видеопоток из Gazebo 11 / ROS 2
-        if self.is_live_stream_active and self.live_stream_frame is not None:
-            frame = cv2.resize(self.live_stream_frame, (w, h))
-            if self.thermal_mode:
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                frame = cv2.applyColorMap(gray, cv2.COLORMAP_INFERNO)
-            # Бейдж реального подключения к симуляции
-            cv2.rectangle(frame, (10, 10), (230, 32), (0, 80, 0), -1)
-            cv2.putText(frame, "LIVE: ROS 2 GAZEBO 11", (16, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 120), 2)
-            cv2.circle(frame, (215, 21), 5, (0, 255, 0), -1)
+        canvas.create_line(dx - radius, dy, dx + radius, dy, fill=COLORS["drone"], width=2)
+        canvas.create_line(dx, dy - radius, dx, dy + radius, fill=COLORS["drone"], width=2)
+        canvas.create_oval(dx - 5, dy - 5, dx + 5, dy + 5, fill=COLORS["accent"], outline="#FFFFFF")
 
-            # Отображаем в UI
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            img = Image.fromarray(rgb_frame)
-            imgtk = ImageTk.PhotoImage(image=img)
-            self.cam_label.imgtk = imgtk
-            self.cam_label.configure(image=imgtk)
+        # Масштабная линейка в правом верхнем углу
+        scale_x0, scale_x1, scale_y = right - 96, right - 26, top + 14
+        canvas.create_line(scale_x0, scale_y, scale_x1, scale_y, fill=COLORS["text"], width=2)
+        canvas.create_line(scale_x0, scale_y - 4, scale_x0, scale_y + 4, fill=COLORS["text"])
+        canvas.create_line(scale_x1, scale_y - 4, scale_x1, scale_y + 4, fill=COLORS["text"])
+        canvas.create_text((scale_x0 + scale_x1) / 2, scale_y - 10, text="10 м",
+                           fill=COLORS["muted"], font=(FONT_UI, 8))
+
+    def _draw_camera(self) -> None:
+        """Выводит кадр с камеры (или синтетическую сцену) в правую панель."""
+        canvas = self.cam_canvas
+        width, height = canvas.winfo_width(), canvas.winfo_height()
+        if width < 80 or height < 80:
             return
 
-        # Иначе — автономный тактический синтетический рендер
-        frame = np.zeros((h, w, 3), dtype=np.uint8)
-        frame[:] = (20, 35, 18)  # Фоновая растительность полигона
+        offset_x = offset_y = 0
+        frame = self.video.snapshot()
+        if frame is None:
+            frame = self._render_synthetic_scene(width, height)
+            frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_LINEAR)
+        else:
+            in_h, in_w = frame.shape[:2]
+            scale = min(width / in_w, height / in_h)
+            new_w, new_h = max(1, int(in_w * scale)), max(1, int(in_h * scale))
+            frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+            offset_x = (width - new_w) // 2
+            offset_y = (height - new_h) // 2
 
-        target = HAZARDS_DB[self.selected_hazard_key]
-        dist = math.hypot(self.drone_x - target['map_x'], self.drone_y - target['map_y'])
-        zoom = max(0.1, 1.0 - (dist / 350.0))
-
-        cx, cy = int(w * 0.5), int(h * 0.5)
-
-        # Рендеринг специфичной ЧС в оптическом потоке
-        if zoom > 0.25:
-            radius = int(50 * zoom)
-            if self.selected_hazard_key == 'FIRE':
-                # Пламя и дым
-                cv2.circle(frame, (cx + 8, cy - 20), int(radius * 1.3), (70, 70, 65), -1)
-                cv2.circle(frame, (cx, cy), radius, (0, 110, 255), -1)
-                cv2.circle(frame, (cx - 4, cy + 4), int(radius * 0.5), (30, 220, 255), -1)
-            elif self.selected_hazard_key == 'OIL':
-                # Темный масляный разлив
-                cv2.ellipse(frame, (cx, cy), (int(radius*1.4), int(radius*0.8)), 25, 0, 360, (25, 25, 30), -1)
-                cv2.ellipse(frame, (cx, cy), (int(radius*1.2), int(radius*0.6)), 25, 0, 360, (45, 40, 50), -1)
-            elif self.selected_hazard_key == 'FLOOD':
-                # Зона паводка / синяя вода
-                cv2.circle(frame, (cx, cy), int(radius*1.5), (200, 120, 20), -1)
-                cv2.circle(frame, (cx, cy), int(radius*1.2), (240, 160, 40), -1)
-            elif self.selected_hazard_key == 'WASTE':
-                # Свалка и бочки
-                for ox, oy, col in [(-15, -10, (0, 200, 200)), (15, -5, (0, 140, 255)), (0, 15, (40, 180, 50))]:
-                    cv2.rectangle(frame, (cx + ox - 12, cy + oy - 16), (cx + ox + 12, cy + oy + 16), col, -1)
-
-        # Режим тепловизора FLIR
-        if self.thermal_mode:
+        if self.thermal:
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            frame = cv2.applyColorMap(gray, cv2.COLORMAP_INFERNO)
+            clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+            frame = cv2.applyColorMap(clahe.apply(gray), cv2.COLORMAP_INFERNO)
 
-        # ИИ-Детекция (Рамка и HUD)
-        if zoom > 0.35 and self.altitude > 3.0:
-            bw, bh = int(140 * zoom), int(100 * zoom)
-            bx1, by1 = cx - bw, cy - bh
-            bx2, by2 = cx + bw, cy + bh
+        if self.overlay:
+            frame = self._draw_hud(frame, frame.shape[1], frame.shape[0])
 
-            box_color = (0, 0, 255) if not self.thermal_mode else (0, 255, 255)
-            cv2.rectangle(frame, (bx1, by1), (bx2, by2), box_color, 2)
-
-            # Скобки видоискателя
-            c_len = 12
-            for px, py in [(bx1, by1), (bx2, by1), (bx1, by2), (bx2, by2)]:
-                sx = 1 if px == bx1 else -1
-                sy = 1 if py == by1 else -1
-                cv2.line(frame, (px, py), (px + sx * c_len, py), box_color, 3)
-                cv2.line(frame, (px, py), (px, py + sy * c_len), box_color, 3)
-
-            # Табличка детекции
-            badge = f"{self.selected_hazard_key}: {target['threat']} | 96.8%"
-            cv2.rectangle(frame, (bx1, by1 - 22), (bx1 + 210, by1), box_color, -1)
-            cv2.putText(frame, badge, (bx1 + 4, by1 - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-            cv2.putText(frame, f"S: ~{target['area_sq_m']} sq.m | REL: X={self.drone_x/10:.1f} Y={self.drone_y/10:.1f}", (bx1, by2 + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 255, 255), 1)
-
-        # Перекрестие прицела камеры
-        cv2.line(frame, (int(w/2) - 16, int(h/2)), (int(w/2) + 16, int(h/2)), (0, 230, 255), 1)
-        cv2.line(frame, (int(w/2), int(h/2) - 16), (int(w/2), int(h/2) + 16), (0, 230, 255), 1)
-
-        # Верхняя плашка видеопотока
-        mode_text = "THERMAL FLIR 8-14um" if self.thermal_mode else "OPTICAL HD 720p (1280x720)"
-        cv2.putText(frame, f"REC [LIVE] | {mode_text} | FPS: 30.0", (12, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 230, 255), 1)
-
-        # Конвертация в Tkinter
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        im = Image.fromarray(rgb)
-        imgtk = ImageTk.PhotoImage(image=im)
-        self.cam_label.imgtk = imgtk
-        self.cam_label.configure(image=imgtk)
+        image = ImageTk.PhotoImage(Image.fromarray(rgb))
+        canvas.create_image(offset_x, offset_y, anchor="nw", image=image)
+        canvas.image = image  # защита от сборщика мусора
+
+    def _render_synthetic_scene(self, width: int, height: int) -> np.ndarray:
+        """Синтетический кадр полигона: лес, прогалина, очаг и дым.
+
+        Рисуется, когда видеопоток с борта недоступен — демонстрация не
+        зависит от запущенного Gazebo.
+        """
+        hazard = HAZARDS_DB[self.hazard_key]
+        rng = np.random.default_rng(2026)
+        frame = np.zeros((height, width, 3), dtype=np.uint8)
+        frame[:] = (34, 48, 28)
+
+        # Трава: мелкий шум и редкие тёмные пятна
+        noise = rng.integers(0, 18, (height, width, 1), dtype=np.uint8)
+        frame = cv2.add(frame, np.repeat(noise, 3, axis=2))
+        for _ in range(120):
+            x, y = int(rng.integers(0, width)), int(rng.integers(0, height))
+            cv2.circle(frame, (x, y), int(rng.integers(8, 30)), (26, 40, 22), -1)
+
+        # Кроны деревьев по краям кадра
+        for _ in range(26):
+            x = int(rng.integers(0, width))
+            y = int(rng.integers(0, height))
+            radius_tree = int(rng.integers(14, 34))
+            cv2.circle(frame, (x, y), radius_tree, (18, 34, 18), -1)
+            cv2.circle(frame, (x - radius_tree // 3, y - radius_tree // 3),
+                       max(3, radius_tree // 2), (26, 48, 24), -1)
+
+        distance = math.hypot(self.drone_x - hazard["x"], self.drone_y - hazard["y"])
+        zoom = max(0.05, min(1.0, 1.0 - distance / 140.0))
+        cx, cy = width // 2, height // 2
+
+        if zoom > 0.18:
+            radius = int(min(width, height) * (0.06 + 0.16 * zoom))
+            radius = max(8, radius)
+            key = self.hazard_key
+
+            if key == "FIRE":
+                self._draw_fire(frame, cx, cy, radius)
+            elif key == "OIL":
+                cv2.ellipse(frame, (cx, cy), (int(radius * 1.9), int(radius * 1.1)), 18, 0, 360,
+                            (22, 26, 30), -1)
+                cv2.ellipse(frame, (cx, cy), (int(radius * 1.3), int(radius * 0.75)), 18, 0, 360,
+                            (34, 38, 44), -1)
+                cv2.ellipse(frame, (cx - radius, cy - radius // 2),
+                            (max(4, radius // 2), max(3, radius // 3)), 0, 0, 360, (70, 80, 92), 2)
+            elif key == "FLOOD":
+                cv2.ellipse(frame, (cx, cy), (int(radius * 2.2), int(radius * 1.4)), 0, 0, 360,
+                            (150, 100, 30), -1)
+                cv2.ellipse(frame, (cx, cy), (int(radius * 1.7), int(radius * 1.0)), 0, 0, 360,
+                            (190, 140, 45), -1)
+                cv2.ellipse(frame, (cx - radius, cy), (int(radius * 0.7), max(3, int(radius * 0.35))),
+                            12, 0, 360, (220, 180, 80), -1)
+            else:  # WASTE
+                cv2.rectangle(frame, (cx - int(radius * 1.7), cy - int(radius * 0.9)),
+                              (cx + int(radius * 1.7), cy + int(radius * 0.9)), (60, 58, 52), -1)
+                for ox, oy, color in ((-radius, -radius // 2, (0, 190, 200)),
+                                      (radius // 2, -radius // 2, (0, 130, 255)),
+                                      (0, radius // 2, (40, 170, 50))):
+                    cv2.rectangle(frame, (cx + ox - radius // 2, cy + oy - radius // 3),
+                                  (cx + ox + radius // 2, cy + oy + radius // 3), color, -1)
+
+        # Виньетка — кадр выглядит как оптика, а не как заливка
+        mask = np.zeros((height, width), dtype=np.uint8)
+        cv2.ellipse(mask, (cx, cy), (int(width * 0.62), int(height * 0.62)), 0, 0, 360, 255, -1)
+        mask = cv2.GaussianBlur(mask, (0, 0), max(width, height) / 8.0)
+        vignette = (mask.astype(np.float32) / 255.0)[:, :, None]
+        return (frame.astype(np.float32) * (0.55 + 0.45 * vignette)).astype(np.uint8)
+
+    @staticmethod
+    def _draw_fire(frame: np.ndarray, cx: int, cy: int, radius: int) -> None:
+        """Очаг пожара: дым, выгоревшая земля и пламя с градиентом."""
+        # Дым рисуем полупрозрачным слоем
+        smoke = frame.copy()
+        cv2.circle(smoke, (cx + radius // 2, cy - int(radius * 1.6)),
+                   max(6, int(radius * 1.3)), (120, 120, 120), -1)
+        cv2.circle(smoke, (cx + radius, cy - int(radius * 2.3)),
+                   max(5, int(radius * 0.9)), (95, 95, 95), -1)
+        frame[:] = cv2.addWeighted(smoke, 0.35, frame, 0.65, 0)
+
+        cv2.circle(frame, (cx, cy), max(6, int(radius * 1.25)), (26, 28, 32), -1)       # гарь
+        cv2.circle(frame, (cx, cy), radius, (0, 55, 190), -1)                          # пламя
+        cv2.circle(frame, (cx - radius // 4, cy + radius // 5),
+                   max(4, int(radius * 0.7)), (0, 120, 255), -1)
+        cv2.circle(frame, (cx - radius // 3, cy + radius // 3),
+                   max(3, int(radius * 0.38)), (40, 220, 255), -1)
+
+        # Отдельные языки пламени по краю очага
+        for angle in range(0, 360, 45):
+            offset_x = int(math.cos(math.radians(angle)) * radius * 0.85)
+            offset_y = int(math.sin(math.radians(angle)) * radius * 0.85)
+            cv2.circle(frame, (cx + offset_x, cy + offset_y), max(2, radius // 8), (0, 90, 255), -1)
+
+    def _draw_hud(self, frame: np.ndarray, width: int, height: int) -> np.ndarray:
+        """Тактический HUD: перекрестие, рамка детекции, служебные надписи."""
+        result = frame.copy()
+        height, width = result.shape[:2]
+        hazard = HAZARDS_DB[self.hazard_key]
+        distance = math.hypot(self.drone_x - hazard["x"], self.drone_y - hazard["y"])
+        detected = self.altitude > 3.0 and distance < 25.0
+
+        # Перекрестие
+        cx, cy = width // 2, height // 2
+        cv2.line(result, (cx - 16, cy), (cx + 16, cy), (0, 230, 255), 1)
+        cv2.line(result, (cx, cy - 16), (cx, cy + 16), (0, 230, 255), 1)
+
+        # Верхняя плашка
+        mode = "THERMAL LWIR" if self.thermal else "OPTICAL 4K"
+        cv2.putText(result, f"REC {now_str()}  {mode}  {width}x{height}", (12, 22),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 230, 255), 1)
+
+        # Рамка детекции
+        if detected:
+            bw, bh = int(width * 0.22), int(height * 0.18)
+            x1, y1, x2, y2 = cx - bw, cy - bh, cx + bw, cy + bh
+            color = (0, 0, 255) if not self.thermal else (0, 255, 255)
+            cv2.rectangle(result, (x1, y1), (x2, y2), color, 2)
+
+            badge = f"{self.hazard_key}  {hazard['threat']}  {hazard['area_sq_m']:.0f} m2"
+            cv2.rectangle(result, (x1, y1 - 22), (x1 + 300, y1), color, -1)
+            cv2.putText(result, badge, (x1 + 6, y1 - 7), cv2.FONT_HERSHEY_SIMPLEX, 0.45,
+                        (255, 255, 255), 1)
+
+        # Нижняя строка
+        cv2.putText(result, f"ALT {self.altitude:.1f} m   BAT {self.battery:.0f}%   HDG {self.heading_deg:.0f}",
+                    (12, height - 14), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 220, 235), 1)
+        return result
+
+
+# ---------------------------------------------------------------------------
+# Точка входа
+# ---------------------------------------------------------------------------
+
+
+def parse_args(argv=None) -> argparse.Namespace:
+    """Аргументы командной строки."""
+    parser = argparse.ArgumentParser(description="АРМ оператора ЦУКС «Око МЧС».")
+    parser.add_argument("--offline", action="store_true", help="не обращаться к видеосерверу борта")
+    parser.add_argument("--autostart", action="store_true", help="сразу начать демонстрационный полёт")
+    return parser.parse_args(argv)
+
+
+def main(argv=None) -> int:
+    """Запуск пульта."""
+    args = parse_args(argv)
+    app = OkoMchsApp(offline=args.offline, autostart=args.autostart)
+    try:
+        app.mainloop()
+    finally:
+        app.video.stop()
+    return 0
+
 
 if __name__ == "__main__":
-    app = OkoMchsOperatorApp()
-    app.mainloop()
+    sys.exit(main())
