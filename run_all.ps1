@@ -7,7 +7,7 @@ Write-Host "1. Очистка старых процессов..." -ForegroundCol
 wsl.exe -d Ubuntu-22.04 bash -c "killall -9 gazebo gzserver gzclient python3 2>/dev/null || true"
 
 Write-Host "2. Запуск симуляции, зрения и автопилота в WSL..." -ForegroundColor Yellow
-Start-Process wsl.exe -ArgumentList "-d Ubuntu-22.04 bash -c 'bash /root/oko-mchs-core/scripts/run_all.sh'"
+Start-Process wsl.exe -ArgumentList "-d Ubuntu-22.04 bash -c 'MCHS_NO_UI=1 bash /root/oko-mchs-core/scripts/run_all.sh'"
 
 Write-Host "3. Ожидание старта узлов (5 сек)..." -ForegroundColor Yellow
 Start-Sleep -Seconds 5

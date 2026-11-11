@@ -1,222 +1,3916 @@
 <?xml version="1.0" ?>
 <sdf version="1.6">
   <world name="mchs_emergency_arena">
-    <!-- Освещение сцены (Дневное солнце) -->
     <include>
       <uri>model://sun</uri>
     </include>
-
-    <!-- Базовый рельеф / Земная поверхность -->
-    <include>
-      <uri>model://ground_plane</uri>
-    </include>
-
-    <!-- Физика симуляции -->
+    <scene>
+      <ambient>0.55 0.58 0.62 1.0</ambient>
+      <background>0.53 0.68 0.86 1.0</background>
+      <shadows>true</shadows>
+    </scene>
     <physics type="ode">
       <max_step_size>0.002</max_step_size>
       <real_time_factor>1.0</real_time_factor>
       <real_time_update_rate>500</real_time_update_rate>
     </physics>
 
-    <!-- ROS 2 World State Plugin: предоставляет сервисы /gazebo/set_entity_state и /gazebo/get_entity_state -->
+    <!-- ROS 2 World State Plugin: /gazebo/set_entity_state, /gazebo/get_entity_state -->
     <plugin name="gazebo_ros_state" filename="libgazebo_ros_state.so">
       <ros>
         <namespace>/gazebo</namespace>
       </ros>
       <update_rate>50.0</update_rate>
     </plugin>
-
-    <!-- Базовая станция / Вертодром старта БПЛА (Точка 0, 0) -->
+    <model name="terrain_ground">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="link">
+      <visual name="grass_plane">
+        <pose>0 0 0</pose>
+        <geometry><plane><normal>0 0 1</normal><size>240.0 240.0</size></plane></geometry>
+        <material>
+          <ambient>0.200 0.320 0.140 1.00</ambient>
+          <diffuse>0.200 0.320 0.140 1.00</diffuse>
+          <specular>0.020 0.020 0.020 1.00</specular>
+        </material>
+      </visual>
+      <collision name="collision_0">
+        <pose>0 0 0</pose>
+        <geometry><plane><normal>0 0 1</normal><size>240.0 240.0</size></plane></geometry>
+      </collision>
+      </link>
+    </model>
+    <model name="fields">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="link">
+      <visual name="field_0">
+        <pose>-15 70 0.0120</pose>
+        <geometry><box><size>60.000 34.000 0.020</size></box></geometry>
+        <material>
+          <ambient>0.420 0.400 0.180 1.00</ambient>
+          <diffuse>0.420 0.400 0.180 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="field_1">
+        <pose>-78 85 0.0120</pose>
+        <geometry><box><size>55.000 28.000 0.020</size></box></geometry>
+        <material>
+          <ambient>0.300 0.340 0.140 1.00</ambient>
+          <diffuse>0.300 0.340 0.140 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="field_2">
+        <pose>30 82 0.0120</pose>
+        <geometry><box><size>65.000 26.000 0.020</size></box></geometry>
+        <material>
+          <ambient>0.460 0.430 0.200 1.00</ambient>
+          <diffuse>0.460 0.430 0.200 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="field_3">
+        <pose>-88 -20 0.0120</pose>
+        <geometry><box><size>24.000 46.000 0.020</size></box></geometry>
+        <material>
+          <ambient>0.260 0.360 0.150 1.00</ambient>
+          <diffuse>0.260 0.360 0.150 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="field_4">
+        <pose>86 15 0.0120</pose>
+        <geometry><box><size>22.000 60.000 0.020</size></box></geometry>
+        <material>
+          <ambient>0.340 0.380 0.160 1.00</ambient>
+          <diffuse>0.340 0.380 0.160 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="field_5">
+        <pose>5 -20 0.0120</pose>
+        <geometry><box><size>38.000 20.000 0.020</size></box></geometry>
+        <material>
+          <ambient>0.360 0.330 0.150 1.00</ambient>
+          <diffuse>0.360 0.330 0.150 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="field_6">
+        <pose>-40 -60 0.0120</pose>
+        <geometry><box><size>30.000 18.000 0.020</size></box></geometry>
+        <material>
+          <ambient>0.440 0.380 0.190 1.00</ambient>
+          <diffuse>0.440 0.380 0.190 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="field_7">
+        <pose>55 5 0.0120</pose>
+        <geometry><box><size>26.000 22.000 0.020</size></box></geometry>
+        <material>
+          <ambient>0.480 0.450 0.210 1.00</ambient>
+          <diffuse>0.480 0.450 0.210 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      </link>
+    </model>
+    <model name="roads">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="link">
+      <visual name="road_0">
+        <pose>0 -30 0.0200 0 0 0.0000</pose>
+        <geometry><box><size>205.000 8.000 0.040</size></box></geometry>
+        <material>
+          <ambient>0.340 0.340 0.370 1.00</ambient>
+          <diffuse>0.340 0.340 0.370 1.00</diffuse>
+          <specular>0.050 0.050 0.050 1.00</specular>
+        </material>
+      </visual>
+      <visual name="road_1">
+        <pose>25 0 0.0200 0 0 1.5708</pose>
+        <geometry><box><size>205.000 7.000 0.040</size></box></geometry>
+        <material>
+          <ambient>0.340 0.340 0.370 1.00</ambient>
+          <diffuse>0.340 0.340 0.370 1.00</diffuse>
+          <specular>0.050 0.050 0.050 1.00</specular>
+        </material>
+      </visual>
+      <visual name="road_2">
+        <pose>-58 0 0.0200 0 0 1.5708</pose>
+        <geometry><box><size>200.000 6.000 0.040</size></box></geometry>
+        <material>
+          <ambient>0.340 0.340 0.370 1.00</ambient>
+          <diffuse>0.340 0.340 0.370 1.00</diffuse>
+          <specular>0.050 0.050 0.050 1.00</specular>
+        </material>
+      </visual>
+      <visual name="road_3">
+        <pose>25.0000 -30.0000 0.0200 0 0 0.0000</pose>
+        <geometry><box><size>8.000 8.000 0.040</size></box></geometry>
+        <material>
+          <ambient>0.340 0.340 0.370 1.00</ambient>
+          <diffuse>0.340 0.340 0.370 1.00</diffuse>
+          <specular>0.050 0.050 0.050 1.00</specular>
+        </material>
+      </visual>
+      <visual name="road_4">
+        <pose>-58.0000 -30.0000 0.0200 0 0 0.0000</pose>
+        <geometry><box><size>6.000 8.000 0.040</size></box></geometry>
+        <material>
+          <ambient>0.340 0.340 0.370 1.00</ambient>
+          <diffuse>0.340 0.340 0.370 1.00</diffuse>
+          <specular>0.050 0.050 0.050 1.00</specular>
+        </material>
+      </visual>
+      <visual name="road_5">
+        <pose>40 4 0.0200 0 0 0.4636</pose>
+        <geometry><box><size>46.000 4.500 0.040</size></box></geometry>
+        <material>
+          <ambient>0.340 0.340 0.370 1.00</ambient>
+          <diffuse>0.340 0.340 0.370 1.00</diffuse>
+          <specular>0.050 0.050 0.050 1.00</specular>
+        </material>
+      </visual>
+      <visual name="road_6">
+        <pose>66 22 0.0200 0 0 0.3805</pose>
+        <geometry><box><size>18.000 4.500 0.040</size></box></geometry>
+        <material>
+          <ambient>0.340 0.340 0.370 1.00</ambient>
+          <diffuse>0.340 0.340 0.370 1.00</diffuse>
+          <specular>0.050 0.050 0.050 1.00</specular>
+        </material>
+      </visual>
+      <visual name="parking">
+        <pose>30 -12 0.0250</pose>
+        <geometry><box><size>26.000 14.000 0.040</size></box></geometry>
+        <material>
+          <ambient>0.340 0.340 0.370 1.00</ambient>
+          <diffuse>0.340 0.340 0.370 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_8">
+        <pose>-89.0625 -30.0000 0.0450 0 0 0.0000</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_9">
+        <pose>-77.1875 -30.0000 0.0450 0 0 0.0000</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_10">
+        <pose>-65.3125 -30.0000 0.0450 0 0 0.0000</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_11">
+        <pose>-53.4375 -30.0000 0.0450 0 0 0.0000</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_12">
+        <pose>-41.5625 -30.0000 0.0450 0 0 0.0000</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_13">
+        <pose>-29.6875 -30.0000 0.0450 0 0 0.0000</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_14">
+        <pose>-17.8125 -30.0000 0.0450 0 0 0.0000</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_15">
+        <pose>-5.9375 -30.0000 0.0450 0 0 0.0000</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_16">
+        <pose>5.9375 -30.0000 0.0450 0 0 0.0000</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_17">
+        <pose>17.8125 -30.0000 0.0450 0 0 0.0000</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_18">
+        <pose>29.6875 -30.0000 0.0450 0 0 0.0000</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_19">
+        <pose>41.5625 -30.0000 0.0450 0 0 0.0000</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_20">
+        <pose>53.4375 -30.0000 0.0450 0 0 0.0000</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_21">
+        <pose>65.3125 -30.0000 0.0450 0 0 0.0000</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_22">
+        <pose>77.1875 -30.0000 0.0450 0 0 0.0000</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_23">
+        <pose>89.0625 -30.0000 0.0450 0 0 0.0000</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_24">
+        <pose>25.0000 -89.0625 0.0450 0 0 1.5708</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_25">
+        <pose>25.0000 -77.1875 0.0450 0 0 1.5708</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_26">
+        <pose>25.0000 -65.3125 0.0450 0 0 1.5708</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_27">
+        <pose>25.0000 -53.4375 0.0450 0 0 1.5708</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_28">
+        <pose>25.0000 -41.5625 0.0450 0 0 1.5708</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_29">
+        <pose>25.0000 -29.6875 0.0450 0 0 1.5708</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_30">
+        <pose>25.0000 -17.8125 0.0450 0 0 1.5708</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_31">
+        <pose>25.0000 -5.9375 0.0450 0 0 1.5708</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_32">
+        <pose>25.0000 5.9375 0.0450 0 0 1.5708</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_33">
+        <pose>25.0000 17.8125 0.0450 0 0 1.5708</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_34">
+        <pose>25.0000 29.6875 0.0450 0 0 1.5708</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_35">
+        <pose>25.0000 41.5625 0.0450 0 0 1.5708</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_36">
+        <pose>25.0000 53.4375 0.0450 0 0 1.5708</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_37">
+        <pose>25.0000 65.3125 0.0450 0 0 1.5708</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_38">
+        <pose>25.0000 77.1875 0.0450 0 0 1.5708</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dash_39">
+        <pose>25.0000 89.0625 0.0450 0 0 1.5708</pose>
+        <geometry><box><size>5.344 0.350 0.030</size></box></geometry>
+        <material>
+          <ambient>0.850 0.850 0.800 1.00</ambient>
+          <diffuse>0.850 0.850 0.800 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      </link>
+    </model>
+    <model name="river">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="link">
+      <visual name="water_surface">
+        <pose>0 -62 0.0180 0 0 0.0600</pose>
+        <geometry><box><size>240.000 16.000 0.060</size></box></geometry>
+        <material>
+          <ambient>0.070 0.280 0.550 1.00</ambient>
+          <diffuse>0.070 0.280 0.550 1.00</diffuse>
+          <specular>0.600 0.650 0.700 1.00</specular>
+        </material>
+      </visual>
+      <visual name="sand_bank_north">
+        <pose>0 -54.2000 0.0200 0 0 0.0600</pose>
+        <geometry><box><size>240.000 3.000 0.040</size></box></geometry>
+        <material>
+          <ambient>0.420 0.380 0.220 1.00</ambient>
+          <diffuse>0.420 0.380 0.220 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="sand_bank_south">
+        <pose>0 -69.8000 0.0200 0 0 0.0600</pose>
+        <geometry><box><size>240.000 3.000 0.040</size></box></geometry>
+        <material>
+          <ambient>0.420 0.380 0.220 1.00</ambient>
+          <diffuse>0.420 0.380 0.220 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      </link>
+    </model>
+    <model name="bridge">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="link">
+      <visual name="bridge_deck">
+        <pose>25 -62 0.8000</pose>
+        <geometry><box><size>11.000 26.000 0.700</size></box></geometry>
+        <material>
+          <ambient>0.420 0.430 0.450 1.00</ambient>
+          <diffuse>0.420 0.430 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="rail_left">
+        <pose>19.7000 -62 1.7000</pose>
+        <geometry><box><size>0.400 26.000 1.200</size></box></geometry>
+        <material>
+          <ambient>0.620 0.620 0.600 1.00</ambient>
+          <diffuse>0.620 0.620 0.600 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="rail_right">
+        <pose>30.3000 -62 1.7000</pose>
+        <geometry><box><size>0.400 26.000 1.200</size></box></geometry>
+        <material>
+          <ambient>0.620 0.620 0.600 1.00</ambient>
+          <diffuse>0.620 0.620 0.600 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pier_3">
+        <pose>19.0000 -74 -1.0000</pose>
+        <geometry><cylinder><radius>0.800</radius><length>6.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pier_4">
+        <pose>19.0000 -62 -1.0000</pose>
+        <geometry><cylinder><radius>0.800</radius><length>6.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pier_5">
+        <pose>19.0000 -50 -1.0000</pose>
+        <geometry><cylinder><radius>0.800</radius><length>6.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pier_6">
+        <pose>31.0000 -74 -1.0000</pose>
+        <geometry><cylinder><radius>0.800</radius><length>6.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pier_7">
+        <pose>31.0000 -62 -1.0000</pose>
+        <geometry><cylinder><radius>0.800</radius><length>6.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pier_8">
+        <pose>31.0000 -50 -1.0000</pose>
+        <geometry><cylinder><radius>0.800</radius><length>6.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      </link>
+    </model>
     <model name="mchs_base_helipad">
       <static>true</static>
-      <pose>0 0 0.005 0 0 0</pose>
+      <pose>0 0 0 0 0 0</pose>
       <link name="link">
-        <!-- Посадочная площадка МЧС -->
-        <visual name="pad_surface">
-          <geometry><cylinder><radius>1.8</radius><length>0.01</length></cylinder></geometry>
-          <material>
-            <ambient>0.2 0.25 0.3 1</ambient>
-            <diffuse>0.2 0.25 0.3 1</diffuse>
-          </material>
-        </visual>
-        <!-- Внешний сигнальный круг -->
-        <visual name="pad_ring">
-          <pose>0 0 0.006 0 0 0</pose>
-          <geometry><cylinder><radius>1.7</radius><length>0.01</length></cylinder></geometry>
-          <material>
-            <ambient>1.0 0.45 0.0 1</ambient>
-            <diffuse>1.0 0.45 0.0 1</diffuse>
-          </material>
-        </visual>
-        <visual name="pad_inner">
-          <pose>0 0 0.007 0 0 0</pose>
-          <geometry><cylinder><radius>1.5</radius><length>0.01</length></cylinder></geometry>
-          <material>
-            <ambient>0.15 0.15 0.18 1</ambient>
-            <diffuse>0.15 0.15 0.18 1</diffuse>
-          </material>
-        </visual>
-        <!-- Навигационная вышка связи -->
-        <visual name="antenna_mast">
-          <pose>-2.2 -2.2 1.5 0 0 0</pose>
-          <geometry><cylinder><radius>0.06</radius><length>3.0</length></cylinder></geometry>
-          <material><ambient>0.8 0.1 0.1 1</ambient><diffuse>0.9 0.1 0.1 1</diffuse></material>
-        </visual>
+      <visual name="concrete_pad">
+        <pose>0 0 0.0500</pose>
+        <geometry><cylinder><radius>8.000</radius><length>0.100</length></cylinder></geometry>
+        <material>
+          <ambient>0.550 0.560 0.580 1.00</ambient>
+          <diffuse>0.550 0.560 0.580 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="orange_ring">
+        <pose>0 0 0.0700</pose>
+        <geometry><cylinder><radius>7.200</radius><length>0.120</length></cylinder></geometry>
+        <material>
+          <ambient>0.850 0.420 0.050 1.00</ambient>
+          <diffuse>0.850 0.420 0.050 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dark_ring">
+        <pose>0 0 0.0800</pose>
+        <geometry><cylinder><radius>6.600</radius><length>0.130</length></cylinder></geometry>
+        <material>
+          <ambient>0.180 0.180 0.200 1.00</ambient>
+          <diffuse>0.180 0.180 0.200 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pad_inner">
+        <pose>0 0 0.0900</pose>
+        <geometry><cylinder><radius>5.900</radius><length>0.140</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.310 0.330 1.00</ambient>
+          <diffuse>0.300 0.310 0.330 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="h_left">
+        <pose>-2.2000 0 0.1050</pose>
+        <geometry><box><size>1.100 4.200 0.030</size></box></geometry>
+        <material>
+          <ambient>0.880 0.880 0.850 1.00</ambient>
+          <diffuse>0.880 0.880 0.850 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="h_right">
+        <pose>2.2000 0 0.1050</pose>
+        <geometry><box><size>1.100 4.200 0.030</size></box></geometry>
+        <material>
+          <ambient>0.880 0.880 0.850 1.00</ambient>
+          <diffuse>0.880 0.880 0.850 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="h_bar">
+        <pose>0 0 0.1050</pose>
+        <geometry><box><size>5.500 1.000 0.030</size></box></geometry>
+        <material>
+          <ambient>0.880 0.880 0.850 1.00</ambient>
+          <diffuse>0.880 0.880 0.850 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pad_light_0">
+        <pose>7.4000 0.0000 0.2000</pose>
+        <geometry><sphere><radius>0.220</radius></sphere></geometry>
+        <material>
+          <ambient>0.950 0.850 0.300 1.00</ambient>
+          <diffuse>0.950 0.850 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.900 0.700 0.200 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="pad_light_1">
+        <pose>5.2326 5.2326 0.2000</pose>
+        <geometry><sphere><radius>0.220</radius></sphere></geometry>
+        <material>
+          <ambient>0.950 0.850 0.300 1.00</ambient>
+          <diffuse>0.950 0.850 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.900 0.700 0.200 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="pad_light_2">
+        <pose>0.0000 7.4000 0.2000</pose>
+        <geometry><sphere><radius>0.220</radius></sphere></geometry>
+        <material>
+          <ambient>0.950 0.850 0.300 1.00</ambient>
+          <diffuse>0.950 0.850 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.900 0.700 0.200 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="pad_light_3">
+        <pose>-5.2326 5.2326 0.2000</pose>
+        <geometry><sphere><radius>0.220</radius></sphere></geometry>
+        <material>
+          <ambient>0.950 0.850 0.300 1.00</ambient>
+          <diffuse>0.950 0.850 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.900 0.700 0.200 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="pad_light_4">
+        <pose>-7.4000 0.0000 0.2000</pose>
+        <geometry><sphere><radius>0.220</radius></sphere></geometry>
+        <material>
+          <ambient>0.950 0.850 0.300 1.00</ambient>
+          <diffuse>0.950 0.850 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.900 0.700 0.200 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="pad_light_5">
+        <pose>-5.2326 -5.2326 0.2000</pose>
+        <geometry><sphere><radius>0.220</radius></sphere></geometry>
+        <material>
+          <ambient>0.950 0.850 0.300 1.00</ambient>
+          <diffuse>0.950 0.850 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.900 0.700 0.200 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="pad_light_6">
+        <pose>-0.0000 -7.4000 0.2000</pose>
+        <geometry><sphere><radius>0.220</radius></sphere></geometry>
+        <material>
+          <ambient>0.950 0.850 0.300 1.00</ambient>
+          <diffuse>0.950 0.850 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.900 0.700 0.200 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="pad_light_7">
+        <pose>5.2326 -5.2326 0.2000</pose>
+        <geometry><sphere><radius>0.220</radius></sphere></geometry>
+        <material>
+          <ambient>0.950 0.850 0.300 1.00</ambient>
+          <diffuse>0.950 0.850 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.900 0.700 0.200 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="hangar">
+        <pose>17 -9 3.0000</pose>
+        <geometry><box><size>17.000 11.000 6.000</size></box></geometry>
+        <material>
+          <ambient>0.550 0.570 0.600 1.00</ambient>
+          <diffuse>0.550 0.570 0.600 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="hangar_roof">
+        <pose>17 -9 6.2000</pose>
+        <geometry><box><size>17.600 11.600 0.800</size></box></geometry>
+        <material>
+          <ambient>0.380 0.400 0.440 1.00</ambient>
+          <diffuse>0.380 0.400 0.440 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="hangar_gate">
+        <pose>17 -3.5500 2.0000</pose>
+        <geometry><box><size>6.000 0.300 4.000</size></box></geometry>
+        <material>
+          <ambient>0.220 0.240 0.280 1.00</ambient>
+          <diffuse>0.220 0.240 0.280 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="awning">
+        <pose>17 -3.4000 4.6000</pose>
+        <geometry><box><size>16.800 3.200 0.060</size></box></geometry>
+        <material>
+          <ambient>0.300 0.320 0.360 1.00</ambient>
+          <diffuse>0.300 0.320 0.360 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="mast">
+        <pose>-9 -9 6.0000</pose>
+        <geometry><cylinder><radius>0.220</radius><length>12.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.620 0.620 0.600 1.00</ambient>
+          <diffuse>0.620 0.620 0.600 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="beacon">
+        <pose>-9 -9 12.2000</pose>
+        <geometry><sphere><radius>0.350</radius></sphere></geometry>
+        <material>
+          <ambient>0.950 0.150 0.100 1.00</ambient>
+          <diffuse>0.950 0.150 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>1.000 0.100 0.050 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="antenna">
+        <pose>-9 -9 13.6000</pose>
+        <geometry><cylinder><radius>0.100</radius><length>3.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.700 0.700 0.700 1.00</ambient>
+          <diffuse>0.700 0.700 0.700 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="container_0">
+        <pose>8.0000 -18.0000 1.3000</pose>
+        <geometry><box><size>6.000 2.500 2.600</size></box></geometry>
+        <material>
+          <ambient>0.850 0.400 0.080 1.00</ambient>
+          <diffuse>0.850 0.400 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="container_1">
+        <pose>14.0000 -18.0000 1.3000</pose>
+        <geometry><box><size>6.000 2.500 2.600</size></box></geometry>
+        <material>
+          <ambient>0.120 0.320 0.650 1.00</ambient>
+          <diffuse>0.120 0.320 0.650 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="container_2">
+        <pose>20.0000 -18.0000 1.3000</pose>
+        <geometry><box><size>6.000 2.500 2.600</size></box></geometry>
+        <material>
+          <ambient>0.550 0.550 0.520 1.00</ambient>
+          <diffuse>0.550 0.550 0.520 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="barrel_25">
+        <pose>8.5000 -13.0000 0.5000</pose>
+        <geometry><cylinder><radius>0.400</radius><length>1.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.350 0.330 0.300 1.00</ambient>
+          <diffuse>0.350 0.330 0.300 1.00</diffuse>
+          <specular>0.300 0.300 0.300 1.00</specular>
+        </material>
+      </visual>
+      <visual name="barrel_26">
+        <pose>9.6000 -13.0000 0.5000</pose>
+        <geometry><cylinder><radius>0.400</radius><length>1.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.350 0.330 0.300 1.00</ambient>
+          <diffuse>0.350 0.330 0.300 1.00</diffuse>
+          <specular>0.300 0.300 0.300 1.00</specular>
+        </material>
+      </visual>
+      <visual name="barrel_27">
+        <pose>10.7000 -13.0000 0.5000</pose>
+        <geometry><cylinder><radius>0.400</radius><length>1.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.350 0.330 0.300 1.00</ambient>
+          <diffuse>0.350 0.330 0.300 1.00</diffuse>
+          <specular>0.300 0.300 0.300 1.00</specular>
+        </material>
+      </visual>
+      <visual name="barrel_28">
+        <pose>11.8000 -13.0000 0.5000</pose>
+        <geometry><cylinder><radius>0.400</radius><length>1.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.350 0.330 0.300 1.00</ambient>
+          <diffuse>0.350 0.330 0.300 1.00</diffuse>
+          <specular>0.300 0.300 0.300 1.00</specular>
+        </material>
+      </visual>
       </link>
     </model>
-
-    <!-- ======================================================== -->
-    <!-- 4 МОДУЛЬНЫХ ОБЪЕКТА ЧС (ПЕРЕМЕЩАЮТСЯ ЧЕРЕЗ arena_controller) -->
-    <!-- ======================================================== -->
-
-    <!-- 1. ОЧАГ ЛЕСНОГО ПОЖАРА (FIRE HAZARD) -->
+    <model name="forest">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="link">
+      <visual name="trunk_0">
+        <pose>52 22 2.5000</pose>
+        <geometry><cylinder><radius>0.250</radius><length>5.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_1">
+        <pose>52 22 5.0000</pose>
+        <geometry><sphere><radius>2.400</radius></sphere></geometry>
+        <material>
+          <ambient>0.090 0.300 0.090 1.00</ambient>
+          <diffuse>0.090 0.300 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_2">
+        <pose>52.8000 21.4000 6.6000</pose>
+        <geometry><sphere><radius>1.800</radius></sphere></geometry>
+        <material>
+          <ambient>0.103 0.345 0.103 1.00</ambient>
+          <diffuse>0.103 0.345 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_3">
+        <pose>51.1000 22.7000 6.2000</pose>
+        <geometry><sphere><radius>1.700</radius></sphere></geometry>
+        <material>
+          <ambient>0.081 0.270 0.081 1.00</ambient>
+          <diffuse>0.081 0.270 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_4">
+        <pose>56 30 3.0000</pose>
+        <geometry><cylinder><radius>0.300</radius><length>6.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_5">
+        <pose>56 30 6.0000</pose>
+        <geometry><sphere><radius>2.880</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.340 0.090 1.00</ambient>
+          <diffuse>0.120 0.340 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_6">
+        <pose>56.9600 29.2800 7.9200</pose>
+        <geometry><sphere><radius>2.160</radius></sphere></geometry>
+        <material>
+          <ambient>0.138 0.391 0.103 1.00</ambient>
+          <diffuse>0.138 0.391 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_7">
+        <pose>54.9200 30.8400 7.4400</pose>
+        <geometry><sphere><radius>2.040</radius></sphere></geometry>
+        <material>
+          <ambient>0.108 0.306 0.081 1.00</ambient>
+          <diffuse>0.108 0.306 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_8">
+        <pose>63 24 2.2500</pose>
+        <geometry><cylinder><radius>0.225</radius><length>4.500</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_9">
+        <pose>63 24 4.5000</pose>
+        <geometry><sphere><radius>2.160</radius></sphere></geometry>
+        <material>
+          <ambient>0.150 0.380 0.090 1.00</ambient>
+          <diffuse>0.150 0.380 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_10">
+        <pose>63.7200 23.4600 5.9400</pose>
+        <geometry><sphere><radius>1.620</radius></sphere></geometry>
+        <material>
+          <ambient>0.172 0.437 0.103 1.00</ambient>
+          <diffuse>0.172 0.437 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_11">
+        <pose>62.1900 24.6300 5.5800</pose>
+        <geometry><sphere><radius>1.530</radius></sphere></geometry>
+        <material>
+          <ambient>0.135 0.342 0.081 1.00</ambient>
+          <diffuse>0.135 0.342 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_12">
+        <pose>68 32 2.7500</pose>
+        <geometry><cylinder><radius>0.275</radius><length>5.500</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_13">
+        <pose>68 32 5.5000</pose>
+        <geometry><sphere><radius>2.640</radius></sphere></geometry>
+        <material>
+          <ambient>0.090 0.420 0.090 1.00</ambient>
+          <diffuse>0.090 0.420 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_14">
+        <pose>68.8800 31.3400 7.2600</pose>
+        <geometry><sphere><radius>1.980</radius></sphere></geometry>
+        <material>
+          <ambient>0.103 0.483 0.103 1.00</ambient>
+          <diffuse>0.103 0.483 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_15">
+        <pose>67.0100 32.7700 6.8200</pose>
+        <geometry><sphere><radius>1.870</radius></sphere></geometry>
+        <material>
+          <ambient>0.081 0.378 0.081 1.00</ambient>
+          <diffuse>0.081 0.378 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_16">
+        <pose>60 36 2.5000</pose>
+        <geometry><cylinder><radius>0.250</radius><length>5.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_17">
+        <pose>60 36 5.0000</pose>
+        <geometry><sphere><radius>2.400</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.300 0.090 1.00</ambient>
+          <diffuse>0.120 0.300 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_18">
+        <pose>60.8000 35.4000 6.6000</pose>
+        <geometry><sphere><radius>1.800</radius></sphere></geometry>
+        <material>
+          <ambient>0.138 0.345 0.103 1.00</ambient>
+          <diffuse>0.138 0.345 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_19">
+        <pose>59.1000 36.7000 6.2000</pose>
+        <geometry><sphere><radius>1.700</radius></sphere></geometry>
+        <material>
+          <ambient>0.108 0.270 0.081 1.00</ambient>
+          <diffuse>0.108 0.270 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_20">
+        <pose>72 24 2.0000</pose>
+        <geometry><cylinder><radius>0.200</radius><length>4.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_21">
+        <pose>72 24 4.0000</pose>
+        <geometry><sphere><radius>1.920</radius></sphere></geometry>
+        <material>
+          <ambient>0.150 0.340 0.090 1.00</ambient>
+          <diffuse>0.150 0.340 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_22">
+        <pose>72.6400 23.5200 5.2800</pose>
+        <geometry><sphere><radius>1.440</radius></sphere></geometry>
+        <material>
+          <ambient>0.172 0.391 0.103 1.00</ambient>
+          <diffuse>0.172 0.391 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_23">
+        <pose>71.2800 24.5600 4.9600</pose>
+        <geometry><sphere><radius>1.360</radius></sphere></geometry>
+        <material>
+          <ambient>0.135 0.306 0.081 1.00</ambient>
+          <diffuse>0.135 0.306 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_24">
+        <pose>48 32 2.3750</pose>
+        <geometry><cylinder><radius>0.237</radius><length>4.750</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_25">
+        <pose>48 32 4.7500</pose>
+        <geometry><sphere><radius>2.280</radius></sphere></geometry>
+        <material>
+          <ambient>0.090 0.380 0.090 1.00</ambient>
+          <diffuse>0.090 0.380 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_26">
+        <pose>48.7600 31.4300 6.2700</pose>
+        <geometry><sphere><radius>1.710</radius></sphere></geometry>
+        <material>
+          <ambient>0.103 0.437 0.103 1.00</ambient>
+          <diffuse>0.103 0.437 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_27">
+        <pose>47.1450 32.6650 5.8900</pose>
+        <geometry><sphere><radius>1.615</radius></sphere></geometry>
+        <material>
+          <ambient>0.081 0.342 0.081 1.00</ambient>
+          <diffuse>0.081 0.342 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_28">
+        <pose>57 41 2.8750</pose>
+        <geometry><cylinder><radius>0.287</radius><length>5.750</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_29">
+        <pose>57 41 5.7500</pose>
+        <geometry><sphere><radius>2.760</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.420 0.090 1.00</ambient>
+          <diffuse>0.120 0.420 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_30">
+        <pose>57.9200 40.3100 7.5900</pose>
+        <geometry><sphere><radius>2.070</radius></sphere></geometry>
+        <material>
+          <ambient>0.138 0.483 0.103 1.00</ambient>
+          <diffuse>0.138 0.483 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_31">
+        <pose>55.9650 41.8050 7.1300</pose>
+        <geometry><sphere><radius>1.955</radius></sphere></geometry>
+        <material>
+          <ambient>0.108 0.378 0.081 1.00</ambient>
+          <diffuse>0.108 0.378 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_32">
+        <pose>66 45 2.2500</pose>
+        <geometry><cylinder><radius>0.225</radius><length>4.500</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_33">
+        <pose>66 45 4.5000</pose>
+        <geometry><sphere><radius>2.160</radius></sphere></geometry>
+        <material>
+          <ambient>0.150 0.300 0.090 1.00</ambient>
+          <diffuse>0.150 0.300 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_34">
+        <pose>66.7200 44.4600 5.9400</pose>
+        <geometry><sphere><radius>1.620</radius></sphere></geometry>
+        <material>
+          <ambient>0.172 0.345 0.103 1.00</ambient>
+          <diffuse>0.172 0.345 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_35">
+        <pose>65.1900 45.6300 5.5800</pose>
+        <geometry><sphere><radius>1.530</radius></sphere></geometry>
+        <material>
+          <ambient>0.135 0.270 0.081 1.00</ambient>
+          <diffuse>0.135 0.270 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_36">
+        <pose>75 38 2.5000</pose>
+        <geometry><cylinder><radius>0.250</radius><length>5.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_37">
+        <pose>75 38 5.0000</pose>
+        <geometry><sphere><radius>2.400</radius></sphere></geometry>
+        <material>
+          <ambient>0.090 0.340 0.090 1.00</ambient>
+          <diffuse>0.090 0.340 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_38">
+        <pose>75.8000 37.4000 6.6000</pose>
+        <geometry><sphere><radius>1.800</radius></sphere></geometry>
+        <material>
+          <ambient>0.103 0.391 0.103 1.00</ambient>
+          <diffuse>0.103 0.391 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_39">
+        <pose>74.1000 38.7000 6.2000</pose>
+        <geometry><sphere><radius>1.700</radius></sphere></geometry>
+        <material>
+          <ambient>0.081 0.306 0.081 1.00</ambient>
+          <diffuse>0.081 0.306 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_40">
+        <pose>44 38 2.1250</pose>
+        <geometry><cylinder><radius>0.212</radius><length>4.250</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_41">
+        <pose>44 38 4.2500</pose>
+        <geometry><sphere><radius>2.040</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.380 0.090 1.00</ambient>
+          <diffuse>0.120 0.380 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_42">
+        <pose>44.6800 37.4900 5.6100</pose>
+        <geometry><sphere><radius>1.530</radius></sphere></geometry>
+        <material>
+          <ambient>0.138 0.437 0.103 1.00</ambient>
+          <diffuse>0.138 0.437 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_43">
+        <pose>43.2350 38.5950 5.2700</pose>
+        <geometry><sphere><radius>1.445</radius></sphere></geometry>
+        <material>
+          <ambient>0.108 0.342 0.081 1.00</ambient>
+          <diffuse>0.108 0.342 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_44">
+        <pose>53 47 2.6250</pose>
+        <geometry><cylinder><radius>0.263</radius><length>5.250</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_45">
+        <pose>53 47 5.2500</pose>
+        <geometry><sphere><radius>2.520</radius></sphere></geometry>
+        <material>
+          <ambient>0.150 0.420 0.090 1.00</ambient>
+          <diffuse>0.150 0.420 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_46">
+        <pose>53.8400 46.3700 6.9300</pose>
+        <geometry><sphere><radius>1.890</radius></sphere></geometry>
+        <material>
+          <ambient>0.172 0.483 0.103 1.00</ambient>
+          <diffuse>0.172 0.483 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_47">
+        <pose>52.0550 47.7350 6.5100</pose>
+        <geometry><sphere><radius>1.785</radius></sphere></geometry>
+        <material>
+          <ambient>0.135 0.378 0.081 1.00</ambient>
+          <diffuse>0.135 0.378 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_48">
+        <pose>61 50 2.3750</pose>
+        <geometry><cylinder><radius>0.237</radius><length>4.750</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_49">
+        <pose>61 50 4.7500</pose>
+        <geometry><sphere><radius>2.280</radius></sphere></geometry>
+        <material>
+          <ambient>0.090 0.300 0.090 1.00</ambient>
+          <diffuse>0.090 0.300 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_50">
+        <pose>61.7600 49.4300 6.2700</pose>
+        <geometry><sphere><radius>1.710</radius></sphere></geometry>
+        <material>
+          <ambient>0.103 0.345 0.103 1.00</ambient>
+          <diffuse>0.103 0.345 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_51">
+        <pose>60.1450 50.6650 5.8900</pose>
+        <geometry><sphere><radius>1.615</radius></sphere></geometry>
+        <material>
+          <ambient>0.081 0.270 0.081 1.00</ambient>
+          <diffuse>0.081 0.270 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_52">
+        <pose>70 52 2.7500</pose>
+        <geometry><cylinder><radius>0.275</radius><length>5.500</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_53">
+        <pose>70 52 5.5000</pose>
+        <geometry><sphere><radius>2.640</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.340 0.090 1.00</ambient>
+          <diffuse>0.120 0.340 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_54">
+        <pose>70.8800 51.3400 7.2600</pose>
+        <geometry><sphere><radius>1.980</radius></sphere></geometry>
+        <material>
+          <ambient>0.138 0.391 0.103 1.00</ambient>
+          <diffuse>0.138 0.391 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_55">
+        <pose>69.0100 52.7700 6.8200</pose>
+        <geometry><sphere><radius>1.870</radius></sphere></geometry>
+        <material>
+          <ambient>0.108 0.306 0.081 1.00</ambient>
+          <diffuse>0.108 0.306 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_56">
+        <pose>79 30 2.2500</pose>
+        <geometry><cylinder><radius>0.225</radius><length>4.500</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_57">
+        <pose>79 30 4.5000</pose>
+        <geometry><sphere><radius>2.160</radius></sphere></geometry>
+        <material>
+          <ambient>0.150 0.380 0.090 1.00</ambient>
+          <diffuse>0.150 0.380 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_58">
+        <pose>79.7200 29.4600 5.9400</pose>
+        <geometry><sphere><radius>1.620</radius></sphere></geometry>
+        <material>
+          <ambient>0.172 0.437 0.103 1.00</ambient>
+          <diffuse>0.172 0.437 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_59">
+        <pose>78.1900 30.6300 5.5800</pose>
+        <geometry><sphere><radius>1.530</radius></sphere></geometry>
+        <material>
+          <ambient>0.135 0.342 0.081 1.00</ambient>
+          <diffuse>0.135 0.342 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_60">
+        <pose>46 20 2.5000</pose>
+        <geometry><cylinder><radius>0.250</radius><length>5.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_61">
+        <pose>46 20 5.0000</pose>
+        <geometry><sphere><radius>2.400</radius></sphere></geometry>
+        <material>
+          <ambient>0.090 0.420 0.090 1.00</ambient>
+          <diffuse>0.090 0.420 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_62">
+        <pose>46.8000 19.4000 6.6000</pose>
+        <geometry><sphere><radius>1.800</radius></sphere></geometry>
+        <material>
+          <ambient>0.103 0.483 0.103 1.00</ambient>
+          <diffuse>0.103 0.483 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_63">
+        <pose>45.1000 20.7000 6.2000</pose>
+        <geometry><sphere><radius>1.700</radius></sphere></geometry>
+        <material>
+          <ambient>0.081 0.378 0.081 1.00</ambient>
+          <diffuse>0.081 0.378 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_64">
+        <pose>74 44 2.1250</pose>
+        <geometry><cylinder><radius>0.212</radius><length>4.250</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_65">
+        <pose>74 44 4.2500</pose>
+        <geometry><sphere><radius>2.040</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.300 0.090 1.00</ambient>
+          <diffuse>0.120 0.300 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_66">
+        <pose>74.6800 43.4900 5.6100</pose>
+        <geometry><sphere><radius>1.530</radius></sphere></geometry>
+        <material>
+          <ambient>0.138 0.345 0.103 1.00</ambient>
+          <diffuse>0.138 0.345 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_67">
+        <pose>73.2350 44.5950 5.2700</pose>
+        <geometry><sphere><radius>1.445</radius></sphere></geometry>
+        <material>
+          <ambient>0.108 0.270 0.081 1.00</ambient>
+          <diffuse>0.108 0.270 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_68">
+        <pose>80 48 2.5000</pose>
+        <geometry><cylinder><radius>0.250</radius><length>5.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_69">
+        <pose>80 48 5.0000</pose>
+        <geometry><sphere><radius>2.400</radius></sphere></geometry>
+        <material>
+          <ambient>0.150 0.340 0.090 1.00</ambient>
+          <diffuse>0.150 0.340 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_70">
+        <pose>80.8000 47.4000 6.6000</pose>
+        <geometry><sphere><radius>1.800</radius></sphere></geometry>
+        <material>
+          <ambient>0.172 0.391 0.103 1.00</ambient>
+          <diffuse>0.172 0.391 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_71">
+        <pose>79.1000 48.7000 6.2000</pose>
+        <geometry><sphere><radius>1.700</radius></sphere></geometry>
+        <material>
+          <ambient>0.135 0.306 0.081 1.00</ambient>
+          <diffuse>0.135 0.306 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_72">
+        <pose>36 44 2.0000</pose>
+        <geometry><cylinder><radius>0.200</radius><length>4.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_73">
+        <pose>36 44 4.0000</pose>
+        <geometry><sphere><radius>1.920</radius></sphere></geometry>
+        <material>
+          <ambient>0.090 0.380 0.090 1.00</ambient>
+          <diffuse>0.090 0.380 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_74">
+        <pose>36.6400 43.5200 5.2800</pose>
+        <geometry><sphere><radius>1.440</radius></sphere></geometry>
+        <material>
+          <ambient>0.103 0.437 0.103 1.00</ambient>
+          <diffuse>0.103 0.437 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_75">
+        <pose>35.2800 44.5600 4.9600</pose>
+        <geometry><sphere><radius>1.360</radius></sphere></geometry>
+        <material>
+          <ambient>0.081 0.342 0.081 1.00</ambient>
+          <diffuse>0.081 0.342 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_76">
+        <pose>42 52 2.5000</pose>
+        <geometry><cylinder><radius>0.250</radius><length>5.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_77">
+        <pose>42 52 5.0000</pose>
+        <geometry><sphere><radius>2.400</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.420 0.090 1.00</ambient>
+          <diffuse>0.120 0.420 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_78">
+        <pose>42.8000 51.4000 6.6000</pose>
+        <geometry><sphere><radius>1.800</radius></sphere></geometry>
+        <material>
+          <ambient>0.138 0.483 0.103 1.00</ambient>
+          <diffuse>0.138 0.483 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_79">
+        <pose>41.1000 52.7000 6.2000</pose>
+        <geometry><sphere><radius>1.700</radius></sphere></geometry>
+        <material>
+          <ambient>0.108 0.378 0.081 1.00</ambient>
+          <diffuse>0.108 0.378 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_80">
+        <pose>90 40 2.2500</pose>
+        <geometry><cylinder><radius>0.225</radius><length>4.500</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_81">
+        <pose>90 40 4.5000</pose>
+        <geometry><sphere><radius>2.160</radius></sphere></geometry>
+        <material>
+          <ambient>0.150 0.300 0.090 1.00</ambient>
+          <diffuse>0.150 0.300 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_82">
+        <pose>90.7200 39.4600 5.9400</pose>
+        <geometry><sphere><radius>1.620</radius></sphere></geometry>
+        <material>
+          <ambient>0.172 0.345 0.103 1.00</ambient>
+          <diffuse>0.172 0.345 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_83">
+        <pose>89.1900 40.6300 5.5800</pose>
+        <geometry><sphere><radius>1.530</radius></sphere></geometry>
+        <material>
+          <ambient>0.135 0.270 0.081 1.00</ambient>
+          <diffuse>0.135 0.270 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_84">
+        <pose>85 55 2.6250</pose>
+        <geometry><cylinder><radius>0.263</radius><length>5.250</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_85">
+        <pose>85 55 5.2500</pose>
+        <geometry><sphere><radius>2.520</radius></sphere></geometry>
+        <material>
+          <ambient>0.090 0.340 0.090 1.00</ambient>
+          <diffuse>0.090 0.340 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_86">
+        <pose>85.8400 54.3700 6.9300</pose>
+        <geometry><sphere><radius>1.890</radius></sphere></geometry>
+        <material>
+          <ambient>0.103 0.391 0.103 1.00</ambient>
+          <diffuse>0.103 0.391 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_87">
+        <pose>84.0550 55.7350 6.5100</pose>
+        <geometry><sphere><radius>1.785</radius></sphere></geometry>
+        <material>
+          <ambient>0.081 0.306 0.081 1.00</ambient>
+          <diffuse>0.081 0.306 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_88">
+        <pose>30 60 2.1250</pose>
+        <geometry><cylinder><radius>0.212</radius><length>4.250</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_89">
+        <pose>30 60 4.2500</pose>
+        <geometry><sphere><radius>2.040</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.380 0.090 1.00</ambient>
+          <diffuse>0.120 0.380 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_90">
+        <pose>30.6800 59.4900 5.6100</pose>
+        <geometry><sphere><radius>1.530</radius></sphere></geometry>
+        <material>
+          <ambient>0.138 0.437 0.103 1.00</ambient>
+          <diffuse>0.138 0.437 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_91">
+        <pose>29.2350 60.5950 5.2700</pose>
+        <geometry><sphere><radius>1.445</radius></sphere></geometry>
+        <material>
+          <ambient>0.108 0.342 0.081 1.00</ambient>
+          <diffuse>0.108 0.342 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_92">
+        <pose>24 52 2.2500</pose>
+        <geometry><cylinder><radius>0.225</radius><length>4.500</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_93">
+        <pose>24 52 4.5000</pose>
+        <geometry><sphere><radius>2.160</radius></sphere></geometry>
+        <material>
+          <ambient>0.150 0.420 0.090 1.00</ambient>
+          <diffuse>0.150 0.420 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_94">
+        <pose>24.7200 51.4600 5.9400</pose>
+        <geometry><sphere><radius>1.620</radius></sphere></geometry>
+        <material>
+          <ambient>0.172 0.483 0.103 1.00</ambient>
+          <diffuse>0.172 0.483 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_95">
+        <pose>23.1900 52.6300 5.5800</pose>
+        <geometry><sphere><radius>1.530</radius></sphere></geometry>
+        <material>
+          <ambient>0.135 0.378 0.081 1.00</ambient>
+          <diffuse>0.135 0.378 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_96">
+        <pose>18 66 2.5000</pose>
+        <geometry><cylinder><radius>0.250</radius><length>5.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_97">
+        <pose>18 66 5.0000</pose>
+        <geometry><sphere><radius>2.400</radius></sphere></geometry>
+        <material>
+          <ambient>0.090 0.300 0.090 1.00</ambient>
+          <diffuse>0.090 0.300 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_98">
+        <pose>18.8000 65.4000 6.6000</pose>
+        <geometry><sphere><radius>1.800</radius></sphere></geometry>
+        <material>
+          <ambient>0.103 0.345 0.103 1.00</ambient>
+          <diffuse>0.103 0.345 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_99">
+        <pose>17.1000 66.7000 6.2000</pose>
+        <geometry><sphere><radius>1.700</radius></sphere></geometry>
+        <material>
+          <ambient>0.081 0.270 0.081 1.00</ambient>
+          <diffuse>0.081 0.270 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_100">
+        <pose>10 55 2.0000</pose>
+        <geometry><cylinder><radius>0.200</radius><length>4.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_101">
+        <pose>10 55 4.0000</pose>
+        <geometry><sphere><radius>1.920</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.340 0.090 1.00</ambient>
+          <diffuse>0.120 0.340 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_102">
+        <pose>10.6400 54.5200 5.2800</pose>
+        <geometry><sphere><radius>1.440</radius></sphere></geometry>
+        <material>
+          <ambient>0.138 0.391 0.103 1.00</ambient>
+          <diffuse>0.138 0.391 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_103">
+        <pose>9.2800 55.5600 4.9600</pose>
+        <geometry><sphere><radius>1.360</radius></sphere></geometry>
+        <material>
+          <ambient>0.108 0.306 0.081 1.00</ambient>
+          <diffuse>0.108 0.306 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_104">
+        <pose>0 70 2.3750</pose>
+        <geometry><cylinder><radius>0.237</radius><length>4.750</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_105">
+        <pose>0 70 4.7500</pose>
+        <geometry><sphere><radius>2.280</radius></sphere></geometry>
+        <material>
+          <ambient>0.150 0.380 0.090 1.00</ambient>
+          <diffuse>0.150 0.380 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_106">
+        <pose>0.7600 69.4300 6.2700</pose>
+        <geometry><sphere><radius>1.710</radius></sphere></geometry>
+        <material>
+          <ambient>0.172 0.437 0.103 1.00</ambient>
+          <diffuse>0.172 0.437 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_107">
+        <pose>-0.8550 70.6650 5.8900</pose>
+        <geometry><sphere><radius>1.615</radius></sphere></geometry>
+        <material>
+          <ambient>0.135 0.342 0.081 1.00</ambient>
+          <diffuse>0.135 0.342 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_108">
+        <pose>-8 62 2.2500</pose>
+        <geometry><cylinder><radius>0.225</radius><length>4.500</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_109">
+        <pose>-8 62 4.5000</pose>
+        <geometry><sphere><radius>2.160</radius></sphere></geometry>
+        <material>
+          <ambient>0.090 0.420 0.090 1.00</ambient>
+          <diffuse>0.090 0.420 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_110">
+        <pose>-7.2800 61.4600 5.9400</pose>
+        <geometry><sphere><radius>1.620</radius></sphere></geometry>
+        <material>
+          <ambient>0.103 0.483 0.103 1.00</ambient>
+          <diffuse>0.103 0.483 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_111">
+        <pose>-8.8100 62.6300 5.5800</pose>
+        <geometry><sphere><radius>1.530</radius></sphere></geometry>
+        <material>
+          <ambient>0.081 0.378 0.081 1.00</ambient>
+          <diffuse>0.081 0.378 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_112">
+        <pose>36 70 2.5000</pose>
+        <geometry><cylinder><radius>0.250</radius><length>5.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_113">
+        <pose>36 70 5.0000</pose>
+        <geometry><sphere><radius>2.400</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.300 0.090 1.00</ambient>
+          <diffuse>0.120 0.300 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_114">
+        <pose>36.8000 69.4000 6.6000</pose>
+        <geometry><sphere><radius>1.800</radius></sphere></geometry>
+        <material>
+          <ambient>0.138 0.345 0.103 1.00</ambient>
+          <diffuse>0.138 0.345 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_115">
+        <pose>35.1000 70.7000 6.2000</pose>
+        <geometry><sphere><radius>1.700</radius></sphere></geometry>
+        <material>
+          <ambient>0.108 0.270 0.081 1.00</ambient>
+          <diffuse>0.108 0.270 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_116">
+        <pose>50 62 2.2500</pose>
+        <geometry><cylinder><radius>0.225</radius><length>4.500</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_117">
+        <pose>50 62 4.5000</pose>
+        <geometry><sphere><radius>2.160</radius></sphere></geometry>
+        <material>
+          <ambient>0.150 0.340 0.090 1.00</ambient>
+          <diffuse>0.150 0.340 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_118">
+        <pose>50.7200 61.4600 5.9400</pose>
+        <geometry><sphere><radius>1.620</radius></sphere></geometry>
+        <material>
+          <ambient>0.172 0.391 0.103 1.00</ambient>
+          <diffuse>0.172 0.391 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_119">
+        <pose>49.1900 62.6300 5.5800</pose>
+        <geometry><sphere><radius>1.530</radius></sphere></geometry>
+        <material>
+          <ambient>0.135 0.306 0.081 1.00</ambient>
+          <diffuse>0.135 0.306 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_120">
+        <pose>-30 60 2.1250</pose>
+        <geometry><cylinder><radius>0.212</radius><length>4.250</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_121">
+        <pose>-30 60 4.2500</pose>
+        <geometry><sphere><radius>2.040</radius></sphere></geometry>
+        <material>
+          <ambient>0.090 0.380 0.090 1.00</ambient>
+          <diffuse>0.090 0.380 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_122">
+        <pose>-29.3200 59.4900 5.6100</pose>
+        <geometry><sphere><radius>1.530</radius></sphere></geometry>
+        <material>
+          <ambient>0.103 0.437 0.103 1.00</ambient>
+          <diffuse>0.103 0.437 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_123">
+        <pose>-30.7650 60.5950 5.2700</pose>
+        <geometry><sphere><radius>1.445</radius></sphere></geometry>
+        <material>
+          <ambient>0.081 0.342 0.081 1.00</ambient>
+          <diffuse>0.081 0.342 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_124">
+        <pose>-45 72 2.5000</pose>
+        <geometry><cylinder><radius>0.250</radius><length>5.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_125">
+        <pose>-45 72 5.0000</pose>
+        <geometry><sphere><radius>2.400</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.420 0.090 1.00</ambient>
+          <diffuse>0.120 0.420 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_126">
+        <pose>-44.2000 71.4000 6.6000</pose>
+        <geometry><sphere><radius>1.800</radius></sphere></geometry>
+        <material>
+          <ambient>0.138 0.483 0.103 1.00</ambient>
+          <diffuse>0.138 0.483 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_127">
+        <pose>-45.9000 72.7000 6.2000</pose>
+        <geometry><sphere><radius>1.700</radius></sphere></geometry>
+        <material>
+          <ambient>0.108 0.378 0.081 1.00</ambient>
+          <diffuse>0.108 0.378 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_128">
+        <pose>-18 78 2.2500</pose>
+        <geometry><cylinder><radius>0.225</radius><length>4.500</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_129">
+        <pose>-18 78 4.5000</pose>
+        <geometry><sphere><radius>2.160</radius></sphere></geometry>
+        <material>
+          <ambient>0.150 0.300 0.090 1.00</ambient>
+          <diffuse>0.150 0.300 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_130">
+        <pose>-17.2800 77.4600 5.9400</pose>
+        <geometry><sphere><radius>1.620</radius></sphere></geometry>
+        <material>
+          <ambient>0.172 0.345 0.103 1.00</ambient>
+          <diffuse>0.172 0.345 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_131">
+        <pose>-18.8100 78.6300 5.5800</pose>
+        <geometry><sphere><radius>1.530</radius></sphere></geometry>
+        <material>
+          <ambient>0.135 0.270 0.081 1.00</ambient>
+          <diffuse>0.135 0.270 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="trunk_132">
+        <pose>-62 62 2.0000</pose>
+        <geometry><cylinder><radius>0.200</radius><length>4.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.300 0.180 0.080 1.00</ambient>
+          <diffuse>0.300 0.180 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_133">
+        <pose>-62 62 4.0000</pose>
+        <geometry><sphere><radius>1.920</radius></sphere></geometry>
+        <material>
+          <ambient>0.090 0.340 0.090 1.00</ambient>
+          <diffuse>0.090 0.340 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_134">
+        <pose>-61.3600 61.5200 5.2800</pose>
+        <geometry><sphere><radius>1.440</radius></sphere></geometry>
+        <material>
+          <ambient>0.103 0.391 0.103 1.00</ambient>
+          <diffuse>0.103 0.391 0.103 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="crown_135">
+        <pose>-62.7200 62.5600 4.9600</pose>
+        <geometry><sphere><radius>1.360</radius></sphere></geometry>
+        <material>
+          <ambient>0.081 0.306 0.081 1.00</ambient>
+          <diffuse>0.081 0.306 0.081 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_0">
+        <pose>-92.0000 -30.0000 0.8000</pose>
+        <geometry><sphere><radius>0.900</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.300 0.100 1.00</ambient>
+          <diffuse>0.120 0.300 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_1">
+        <pose>-83.3000 -14.1334 0.8000</pose>
+        <geometry><sphere><radius>1.200</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.350 0.100 1.00</ambient>
+          <diffuse>0.120 0.350 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_2">
+        <pose>-74.6000 -34.0887 0.8000</pose>
+        <geometry><sphere><radius>1.500</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.400 0.100 1.00</ambient>
+          <diffuse>0.120 0.400 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_3">
+        <pose>-65.9000 -44.8130 0.8000</pose>
+        <geometry><sphere><radius>0.900</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.300 0.100 1.00</ambient>
+          <diffuse>0.120 0.300 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_4">
+        <pose>-57.2000 -22.0942 0.8000</pose>
+        <geometry><sphere><radius>1.200</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.350 0.100 1.00</ambient>
+          <diffuse>0.120 0.350 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_5">
+        <pose>-48.5000 -17.2242 0.8000</pose>
+        <geometry><sphere><radius>1.500</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.400 0.100 1.00</ambient>
+          <diffuse>0.120 0.400 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_6">
+        <pose>-39.8000 -41.1980 0.8000</pose>
+        <geometry><sphere><radius>0.900</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.300 0.100 1.00</ambient>
+          <diffuse>0.120 0.300 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_7">
+        <pose>-31.1000 -39.8902 0.8000</pose>
+        <geometry><sphere><radius>1.200</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.350 0.100 1.00</ambient>
+          <diffuse>0.120 0.350 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_8">
+        <pose>-22.4000 -16.2534 0.8000</pose>
+        <geometry><sphere><radius>1.500</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.400 0.100 1.00</ambient>
+          <diffuse>0.120 0.400 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_9">
+        <pose>-13.7000 -23.6522 0.8000</pose>
+        <geometry><sphere><radius>0.900</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.300 0.100 1.00</ambient>
+          <diffuse>0.120 0.300 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_10">
+        <pose>-5.0000 -45.3824 0.8000</pose>
+        <geometry><sphere><radius>1.200</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.350 0.100 1.00</ambient>
+          <diffuse>0.120 0.350 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_11">
+        <pose>3.7000 -32.3840 0.8000</pose>
+        <geometry><sphere><radius>1.500</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.400 0.100 1.00</ambient>
+          <diffuse>0.120 0.400 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_12">
+        <pose>12.4000 -14.0033 0.8000</pose>
+        <geometry><sphere><radius>0.900</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.300 0.100 1.00</ambient>
+          <diffuse>0.120 0.300 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_13">
+        <pose>21.1000 -31.7382 0.8000</pose>
+        <geometry><sphere><radius>1.200</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.350 0.100 1.00</ambient>
+          <diffuse>0.120 0.350 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_14">
+        <pose>29.8000 -45.5488 0.8000</pose>
+        <geometry><sphere><radius>1.500</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.400 0.100 1.00</ambient>
+          <diffuse>0.120 0.400 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_15">
+        <pose>38.5000 -24.2551 0.8000</pose>
+        <geometry><sphere><radius>0.900</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.300 0.100 1.00</ambient>
+          <diffuse>0.120 0.300 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_16">
+        <pose>47.2000 -15.9316 0.8000</pose>
+        <geometry><sphere><radius>1.200</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.350 0.100 1.00</ambient>
+          <diffuse>0.120 0.350 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_17">
+        <pose>55.9000 -39.3702 0.8000</pose>
+        <geometry><sphere><radius>1.500</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.400 0.100 1.00</ambient>
+          <diffuse>0.120 0.400 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_18">
+        <pose>64.6000 -41.6538 0.8000</pose>
+        <geometry><sphere><radius>0.900</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.300 0.100 1.00</ambient>
+          <diffuse>0.120 0.300 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_19">
+        <pose>73.3000 -17.6268 0.8000</pose>
+        <geometry><sphere><radius>1.200</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.350 0.100 1.00</ambient>
+          <diffuse>0.120 0.350 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_20">
+        <pose>82.0000 -21.5347 0.8000</pose>
+        <geometry><sphere><radius>1.500</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.400 0.100 1.00</ambient>
+          <diffuse>0.120 0.400 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="bush_21">
+        <pose>90.7000 -44.5547 0.8000</pose>
+        <geometry><sphere><radius>0.900</radius></sphere></geometry>
+        <material>
+          <ambient>0.120 0.300 0.100 1.00</ambient>
+          <diffuse>0.120 0.300 0.100 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      </link>
+    </model>
+    <model name="village">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="link">
+      <visual name="house_0">
+        <pose>-32 -16 1.6000 0 0 0.0000</pose>
+        <geometry><box><size>9.000 7.000 3.200</size></box></geometry>
+        <material>
+          <ambient>0.620 0.580 0.480 1.00</ambient>
+          <diffuse>0.620 0.580 0.480 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="roof_1">
+        <pose>-32 -16 3.6480 0 0 0.0000</pose>
+        <geometry><box><size>10.080 7.840 1.024</size></box></geometry>
+        <material>
+          <ambient>0.320 0.120 0.090 1.00</ambient>
+          <diffuse>0.320 0.120 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="door_2">
+        <pose>-32 -16 0.8320 0 0 0.0000</pose>
+        <geometry><box><size>1.620 0.280 1.440</size></box></geometry>
+        <material>
+          <ambient>0.200 0.220 0.260 1.00</ambient>
+          <diffuse>0.200 0.220 0.260 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="window_3">
+        <pose>-34.5200 -16 1.9840 0 0 0.0000</pose>
+        <geometry><box><size>1.260 0.210 0.576</size></box></geometry>
+        <material>
+          <ambient>0.550 0.750 0.850 1.00</ambient>
+          <diffuse>0.550 0.750 0.850 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.250 0.350 0.450 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="window_4">
+        <pose>-29.4800 -16 1.9840 0 0 0.0000</pose>
+        <geometry><box><size>1.260 0.210 0.576</size></box></geometry>
+        <material>
+          <ambient>0.550 0.750 0.850 1.00</ambient>
+          <diffuse>0.550 0.750 0.850 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.250 0.350 0.450 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="yard_0">
+        <pose>-32 -16 0.0600</pose>
+        <geometry><box><size>12.600 9.800 0.120</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.280 1.00</ambient>
+          <diffuse>0.350 0.330 0.280 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="house_6">
+        <pose>-20 -18 1.5000 0 0 0.1000</pose>
+        <geometry><box><size>8.000 6.000 3.000</size></box></geometry>
+        <material>
+          <ambient>0.620 0.580 0.480 1.00</ambient>
+          <diffuse>0.620 0.580 0.480 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="roof_7">
+        <pose>-20 -18 3.4200 0 0 0.1000</pose>
+        <geometry><box><size>8.960 6.720 0.960</size></box></geometry>
+        <material>
+          <ambient>0.320 0.120 0.090 1.00</ambient>
+          <diffuse>0.320 0.120 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="door_8">
+        <pose>-20 -18 0.7800 0 0 0.1000</pose>
+        <geometry><box><size>1.440 0.240 1.350</size></box></geometry>
+        <material>
+          <ambient>0.200 0.220 0.260 1.00</ambient>
+          <diffuse>0.200 0.220 0.260 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="window_9">
+        <pose>-22.2400 -18 1.8600 0 0 0.1000</pose>
+        <geometry><box><size>1.120 0.180 0.540</size></box></geometry>
+        <material>
+          <ambient>0.550 0.750 0.850 1.00</ambient>
+          <diffuse>0.550 0.750 0.850 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.250 0.350 0.450 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="window_10">
+        <pose>-17.7600 -18 1.8600 0 0 0.1000</pose>
+        <geometry><box><size>1.120 0.180 0.540</size></box></geometry>
+        <material>
+          <ambient>0.550 0.750 0.850 1.00</ambient>
+          <diffuse>0.550 0.750 0.850 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.250 0.350 0.450 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="yard_1">
+        <pose>-20 -18 0.0600</pose>
+        <geometry><box><size>11.200 8.400 0.120</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.280 1.00</ambient>
+          <diffuse>0.350 0.330 0.280 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="house_12">
+        <pose>-42 -18 1.7000 0 0 -0.0500</pose>
+        <geometry><box><size>10.000 7.000 3.400</size></box></geometry>
+        <material>
+          <ambient>0.620 0.580 0.480 1.00</ambient>
+          <diffuse>0.620 0.580 0.480 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="roof_13">
+        <pose>-42 -18 3.8760 0 0 -0.0500</pose>
+        <geometry><box><size>11.200 7.840 1.088</size></box></geometry>
+        <material>
+          <ambient>0.320 0.120 0.090 1.00</ambient>
+          <diffuse>0.320 0.120 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="door_14">
+        <pose>-42 -18 0.8840 0 0 -0.0500</pose>
+        <geometry><box><size>1.800 0.280 1.530</size></box></geometry>
+        <material>
+          <ambient>0.200 0.220 0.260 1.00</ambient>
+          <diffuse>0.200 0.220 0.260 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="window_15">
+        <pose>-44.8000 -18 2.1080 0 0 -0.0500</pose>
+        <geometry><box><size>1.400 0.210 0.612</size></box></geometry>
+        <material>
+          <ambient>0.550 0.750 0.850 1.00</ambient>
+          <diffuse>0.550 0.750 0.850 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.250 0.350 0.450 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="window_16">
+        <pose>-39.2000 -18 2.1080 0 0 -0.0500</pose>
+        <geometry><box><size>1.400 0.210 0.612</size></box></geometry>
+        <material>
+          <ambient>0.550 0.750 0.850 1.00</ambient>
+          <diffuse>0.550 0.750 0.850 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.250 0.350 0.450 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="yard_2">
+        <pose>-42 -18 0.0600</pose>
+        <geometry><box><size>14.000 9.800 0.120</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.280 1.00</ambient>
+          <diffuse>0.350 0.330 0.280 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="house_18">
+        <pose>-30 -24 1.4000 0 0 0.1500</pose>
+        <geometry><box><size>7.000 6.000 2.800</size></box></geometry>
+        <material>
+          <ambient>0.620 0.580 0.480 1.00</ambient>
+          <diffuse>0.620 0.580 0.480 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="roof_19">
+        <pose>-30 -24 3.1920 0 0 0.1500</pose>
+        <geometry><box><size>7.840 6.720 0.896</size></box></geometry>
+        <material>
+          <ambient>0.320 0.120 0.090 1.00</ambient>
+          <diffuse>0.320 0.120 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="door_20">
+        <pose>-30 -24 0.7280 0 0 0.1500</pose>
+        <geometry><box><size>1.260 0.240 1.260</size></box></geometry>
+        <material>
+          <ambient>0.200 0.220 0.260 1.00</ambient>
+          <diffuse>0.200 0.220 0.260 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="window_21">
+        <pose>-31.9600 -24 1.7360 0 0 0.1500</pose>
+        <geometry><box><size>0.980 0.180 0.504</size></box></geometry>
+        <material>
+          <ambient>0.550 0.750 0.850 1.00</ambient>
+          <diffuse>0.550 0.750 0.850 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.250 0.350 0.450 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="window_22">
+        <pose>-28.0400 -24 1.7360 0 0 0.1500</pose>
+        <geometry><box><size>0.980 0.180 0.504</size></box></geometry>
+        <material>
+          <ambient>0.550 0.750 0.850 1.00</ambient>
+          <diffuse>0.550 0.750 0.850 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.250 0.350 0.450 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="yard_3">
+        <pose>-30 -24 0.0600</pose>
+        <geometry><box><size>9.800 8.400 0.120</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.280 1.00</ambient>
+          <diffuse>0.350 0.330 0.280 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="house_24">
+        <pose>-16 -14 1.5500 0 0 -0.1000</pose>
+        <geometry><box><size>8.000 6.000 3.100</size></box></geometry>
+        <material>
+          <ambient>0.620 0.580 0.480 1.00</ambient>
+          <diffuse>0.620 0.580 0.480 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="roof_25">
+        <pose>-16 -14 3.5340 0 0 -0.1000</pose>
+        <geometry><box><size>8.960 6.720 0.992</size></box></geometry>
+        <material>
+          <ambient>0.320 0.120 0.090 1.00</ambient>
+          <diffuse>0.320 0.120 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="door_26">
+        <pose>-16 -14 0.8060 0 0 -0.1000</pose>
+        <geometry><box><size>1.440 0.240 1.395</size></box></geometry>
+        <material>
+          <ambient>0.200 0.220 0.260 1.00</ambient>
+          <diffuse>0.200 0.220 0.260 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="window_27">
+        <pose>-18.2400 -14 1.9220 0 0 -0.1000</pose>
+        <geometry><box><size>1.120 0.180 0.558</size></box></geometry>
+        <material>
+          <ambient>0.550 0.750 0.850 1.00</ambient>
+          <diffuse>0.550 0.750 0.850 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.250 0.350 0.450 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="window_28">
+        <pose>-13.7600 -14 1.9220 0 0 -0.1000</pose>
+        <geometry><box><size>1.120 0.180 0.558</size></box></geometry>
+        <material>
+          <ambient>0.550 0.750 0.850 1.00</ambient>
+          <diffuse>0.550 0.750 0.850 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.250 0.350 0.450 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="yard_4">
+        <pose>-16 -14 0.0600</pose>
+        <geometry><box><size>11.200 8.400 0.120</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.280 1.00</ambient>
+          <diffuse>0.350 0.330 0.280 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="house_30">
+        <pose>-46 -13 1.5000 0 0 0.0000</pose>
+        <geometry><box><size>9.000 6.000 3.000</size></box></geometry>
+        <material>
+          <ambient>0.620 0.580 0.480 1.00</ambient>
+          <diffuse>0.620 0.580 0.480 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="roof_31">
+        <pose>-46 -13 3.4200 0 0 0.0000</pose>
+        <geometry><box><size>10.080 6.720 0.960</size></box></geometry>
+        <material>
+          <ambient>0.320 0.120 0.090 1.00</ambient>
+          <diffuse>0.320 0.120 0.090 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="door_32">
+        <pose>-46 -13 0.7800 0 0 0.0000</pose>
+        <geometry><box><size>1.620 0.240 1.350</size></box></geometry>
+        <material>
+          <ambient>0.200 0.220 0.260 1.00</ambient>
+          <diffuse>0.200 0.220 0.260 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="window_33">
+        <pose>-48.5200 -13 1.8600 0 0 0.0000</pose>
+        <geometry><box><size>1.260 0.180 0.540</size></box></geometry>
+        <material>
+          <ambient>0.550 0.750 0.850 1.00</ambient>
+          <diffuse>0.550 0.750 0.850 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.250 0.350 0.450 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="window_34">
+        <pose>-43.4800 -13 1.8600 0 0 0.0000</pose>
+        <geometry><box><size>1.260 0.180 0.540</size></box></geometry>
+        <material>
+          <ambient>0.550 0.750 0.850 1.00</ambient>
+          <diffuse>0.550 0.750 0.850 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.250 0.350 0.450 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="yard_5">
+        <pose>-46 -13 0.0600</pose>
+        <geometry><box><size>12.600 8.400 0.120</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.280 1.00</ambient>
+          <diffuse>0.350 0.330 0.280 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="warehouse_1">
+        <pose>-4 16 3.5000</pose>
+        <geometry><box><size>24.000 14.000 7.000</size></box></geometry>
+        <material>
+          <ambient>0.520 0.540 0.570 1.00</ambient>
+          <diffuse>0.520 0.540 0.570 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="warehouse_roof_1">
+        <pose>-4 16 7.3000</pose>
+        <geometry><box><size>24.600 14.600 0.900</size></box></geometry>
+        <material>
+          <ambient>0.350 0.370 0.410 1.00</ambient>
+          <diffuse>0.350 0.370 0.410 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="warehouse_2">
+        <pose>26 16 3.0000</pose>
+        <geometry><box><size>18.000 11.000 6.000</size></box></geometry>
+        <material>
+          <ambient>0.580 0.550 0.480 1.00</ambient>
+          <diffuse>0.580 0.550 0.480 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="warehouse_roof_2">
+        <pose>26 16 6.2000</pose>
+        <geometry><box><size>18.600 11.600 0.800</size></box></geometry>
+        <material>
+          <ambient>0.360 0.340 0.300 1.00</ambient>
+          <diffuse>0.360 0.340 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="small_yard">
+        <pose>-34 -24 0.2500</pose>
+        <geometry><box><size>9.000 6.000 0.500</size></box></geometry>
+        <material>
+          <ambient>0.400 0.400 0.400 1.00</ambient>
+          <diffuse>0.400 0.400 0.400 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      </link>
+    </model>
+    <model name="oil_depot">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="link">
+      <visual name="tank_0">
+        <pose>-58 52 3.2500</pose>
+        <geometry><cylinder><radius>5.400</radius><length>6.500</length></cylinder></geometry>
+        <material>
+          <ambient>0.720 0.730 0.700 1.00</ambient>
+          <diffuse>0.720 0.730 0.700 1.00</diffuse>
+          <specular>0.350 0.350 0.350 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dome_1">
+        <pose>-58 52 6.5000</pose>
+        <geometry><sphere><radius>5.400</radius></sphere></geometry>
+        <material>
+          <ambient>0.684 0.694 0.665 1.00</ambient>
+          <diffuse>0.684 0.694 0.665 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pipe_2">
+        <pose>-59.0800 52.0000 0.6000 0 0 3.1416</pose>
+        <geometry><box><size>10.260 0.350 0.350</size></box></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pipe_3">
+        <pose>-56.9200 52.0000 0.6000 0 0 0.0000</pose>
+        <geometry><box><size>10.260 0.350 0.350</size></box></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pipe_4">
+        <pose>-58.0000 50.9200 0.6000 0 0 -1.5708</pose>
+        <geometry><box><size>10.260 0.350 0.350</size></box></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pipe_5">
+        <pose>-58.0000 53.0800 0.6000 0 0 1.5708</pose>
+        <geometry><box><size>10.260 0.350 0.350</size></box></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="tank_6">
+        <pose>-44 52 3.2500</pose>
+        <geometry><cylinder><radius>5.400</radius><length>6.500</length></cylinder></geometry>
+        <material>
+          <ambient>0.720 0.730 0.700 1.00</ambient>
+          <diffuse>0.720 0.730 0.700 1.00</diffuse>
+          <specular>0.350 0.350 0.350 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dome_7">
+        <pose>-44 52 6.5000</pose>
+        <geometry><sphere><radius>5.400</radius></sphere></geometry>
+        <material>
+          <ambient>0.684 0.694 0.665 1.00</ambient>
+          <diffuse>0.684 0.694 0.665 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pipe_8">
+        <pose>-45.0800 52.0000 0.6000 0 0 3.1416</pose>
+        <geometry><box><size>10.260 0.350 0.350</size></box></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pipe_9">
+        <pose>-42.9200 52.0000 0.6000 0 0 0.0000</pose>
+        <geometry><box><size>10.260 0.350 0.350</size></box></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pipe_10">
+        <pose>-44.0000 50.9200 0.6000 0 0 -1.5708</pose>
+        <geometry><box><size>10.260 0.350 0.350</size></box></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pipe_11">
+        <pose>-44.0000 53.0800 0.6000 0 0 1.5708</pose>
+        <geometry><box><size>10.260 0.350 0.350</size></box></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="tank_12">
+        <pose>-58 66 3.2500</pose>
+        <geometry><cylinder><radius>5.400</radius><length>6.500</length></cylinder></geometry>
+        <material>
+          <ambient>0.720 0.730 0.700 1.00</ambient>
+          <diffuse>0.720 0.730 0.700 1.00</diffuse>
+          <specular>0.350 0.350 0.350 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dome_13">
+        <pose>-58 66 6.5000</pose>
+        <geometry><sphere><radius>5.400</radius></sphere></geometry>
+        <material>
+          <ambient>0.684 0.694 0.665 1.00</ambient>
+          <diffuse>0.684 0.694 0.665 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pipe_14">
+        <pose>-59.0800 66.0000 0.6000 0 0 3.1416</pose>
+        <geometry><box><size>10.260 0.350 0.350</size></box></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pipe_15">
+        <pose>-56.9200 66.0000 0.6000 0 0 0.0000</pose>
+        <geometry><box><size>10.260 0.350 0.350</size></box></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pipe_16">
+        <pose>-58.0000 64.9200 0.6000 0 0 -1.5708</pose>
+        <geometry><box><size>10.260 0.350 0.350</size></box></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pipe_17">
+        <pose>-58.0000 67.0800 0.6000 0 0 1.5708</pose>
+        <geometry><box><size>10.260 0.350 0.350</size></box></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="tank_18">
+        <pose>-44 66 3.2500</pose>
+        <geometry><cylinder><radius>5.400</radius><length>6.500</length></cylinder></geometry>
+        <material>
+          <ambient>0.720 0.730 0.700 1.00</ambient>
+          <diffuse>0.720 0.730 0.700 1.00</diffuse>
+          <specular>0.350 0.350 0.350 1.00</specular>
+        </material>
+      </visual>
+      <visual name="dome_19">
+        <pose>-44 66 6.5000</pose>
+        <geometry><sphere><radius>5.400</radius></sphere></geometry>
+        <material>
+          <ambient>0.684 0.694 0.665 1.00</ambient>
+          <diffuse>0.684 0.694 0.665 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pipe_20">
+        <pose>-45.0800 66.0000 0.6000 0 0 3.1416</pose>
+        <geometry><box><size>10.260 0.350 0.350</size></box></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pipe_21">
+        <pose>-42.9200 66.0000 0.6000 0 0 0.0000</pose>
+        <geometry><box><size>10.260 0.350 0.350</size></box></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pipe_22">
+        <pose>-44.0000 64.9200 0.6000 0 0 -1.5708</pose>
+        <geometry><box><size>10.260 0.350 0.350</size></box></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pipe_23">
+        <pose>-44.0000 67.0800 0.6000 0 0 1.5708</pose>
+        <geometry><box><size>10.260 0.350 0.350</size></box></geometry>
+        <material>
+          <ambient>0.450 0.450 0.450 1.00</ambient>
+          <diffuse>0.450 0.450 0.450 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="visual_24">
+        <pose>-51 46.0000 0.5500</pose>
+        <geometry><box><size>26.000 0.600 1.100</size></box></geometry>
+        <material>
+          <ambient>0.520 0.470 0.380 1.00</ambient>
+          <diffuse>0.520 0.470 0.380 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="visual_25">
+        <pose>-51 72.0000 0.5500</pose>
+        <geometry><box><size>26.000 0.600 1.100</size></box></geometry>
+        <material>
+          <ambient>0.520 0.470 0.380 1.00</ambient>
+          <diffuse>0.520 0.470 0.380 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="visual_26">
+        <pose>-64.0000 59 0.5500</pose>
+        <geometry><box><size>0.600 26.000 1.100</size></box></geometry>
+        <material>
+          <ambient>0.520 0.470 0.380 1.00</ambient>
+          <diffuse>0.520 0.470 0.380 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="visual_27">
+        <pose>-38.0000 59 0.5500</pose>
+        <geometry><box><size>0.600 26.000 1.100</size></box></geometry>
+        <material>
+          <ambient>0.520 0.470 0.380 1.00</ambient>
+          <diffuse>0.520 0.470 0.380 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pipe_main">
+        <pose>-51 52 1.2000 0 1.5708 0</pose>
+        <geometry><cylinder><radius>0.350</radius><length>22.000</length></cylinder></geometry>
+        <material>
+          <ambient>0.550 0.550 0.550 1.00</ambient>
+          <diffuse>0.550 0.550 0.550 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pump_house">
+        <pose>-66 44 1.7000</pose>
+        <geometry><box><size>7.000 5.000 3.400</size></box></geometry>
+        <material>
+          <ambient>0.600 0.580 0.520 1.00</ambient>
+          <diffuse>0.600 0.580 0.520 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="pump_roof">
+        <pose>-66 44 3.6000</pose>
+        <geometry><box><size>7.600 5.600 0.500</size></box></geometry>
+        <material>
+          <ambient>0.340 0.320 0.280 1.00</ambient>
+          <diffuse>0.340 0.320 0.280 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="loading_rack">
+        <pose>-51 44 1.4000</pose>
+        <geometry><box><size>14.000 2.200 0.400</size></box></geometry>
+        <material>
+          <ambient>0.420 0.420 0.420 1.00</ambient>
+          <diffuse>0.420 0.420 0.420 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="rack_leg_0">
+        <pose>-57.0000 44 0.9000</pose>
+        <geometry><cylinder><radius>0.200</radius><length>3.600</length></cylinder></geometry>
+        <material>
+          <ambient>0.400 0.400 0.400 1.00</ambient>
+          <diffuse>0.400 0.400 0.400 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="rack_leg_1">
+        <pose>-54.6000 44 0.9000</pose>
+        <geometry><cylinder><radius>0.200</radius><length>3.600</length></cylinder></geometry>
+        <material>
+          <ambient>0.400 0.400 0.400 1.00</ambient>
+          <diffuse>0.400 0.400 0.400 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="rack_leg_2">
+        <pose>-52.2000 44 0.9000</pose>
+        <geometry><cylinder><radius>0.200</radius><length>3.600</length></cylinder></geometry>
+        <material>
+          <ambient>0.400 0.400 0.400 1.00</ambient>
+          <diffuse>0.400 0.400 0.400 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="rack_leg_3">
+        <pose>-49.8000 44 0.9000</pose>
+        <geometry><cylinder><radius>0.200</radius><length>3.600</length></cylinder></geometry>
+        <material>
+          <ambient>0.400 0.400 0.400 1.00</ambient>
+          <diffuse>0.400 0.400 0.400 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="rack_leg_4">
+        <pose>-47.4000 44 0.9000</pose>
+        <geometry><cylinder><radius>0.200</radius><length>3.600</length></cylinder></geometry>
+        <material>
+          <ambient>0.400 0.400 0.400 1.00</ambient>
+          <diffuse>0.400 0.400 0.400 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="rack_leg_5">
+        <pose>-45.0000 44 0.9000</pose>
+        <geometry><cylinder><radius>0.200</radius><length>3.600</length></cylinder></geometry>
+        <material>
+          <ambient>0.400 0.400 0.400 1.00</ambient>
+          <diffuse>0.400 0.400 0.400 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      </link>
+    </model>
+    <model name="landfill_site">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="link">
+      <visual name="waste_mound">
+        <pose>68 -74 -5.0000</pose>
+        <geometry><sphere><radius>9.000</radius></sphere></geometry>
+        <material>
+          <ambient>0.300 0.240 0.140 1.00</ambient>
+          <diffuse>0.300 0.240 0.140 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="waste_base">
+        <pose>68 -74 0.1500</pose>
+        <geometry><cylinder><radius>11.000</radius><length>0.300</length></cylinder></geometry>
+        <material>
+          <ambient>0.280 0.240 0.160 1.00</ambient>
+          <diffuse>0.280 0.240 0.160 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="barrel_2">
+        <pose>72.0000 -74.0000 0.5500</pose>
+        <geometry><cylinder><radius>0.450</radius><length>1.100</length></cylinder></geometry>
+        <material>
+          <ambient>0.850 0.720 0.050 1.00</ambient>
+          <diffuse>0.850 0.720 0.050 1.00</diffuse>
+          <specular>0.300 0.300 0.300 1.00</specular>
+        </material>
+      </visual>
+      <visual name="barrel_3">
+        <pose>72.5250 -70.7008 0.5500</pose>
+        <geometry><cylinder><radius>0.450</radius><length>1.100</length></cylinder></geometry>
+        <material>
+          <ambient>0.800 0.300 0.050 1.00</ambient>
+          <diffuse>0.800 0.300 0.050 1.00</diffuse>
+          <specular>0.300 0.300 0.300 1.00</specular>
+        </material>
+      </visual>
+      <visual name="barrel_4">
+        <pose>70.2019 -67.1449 0.5500</pose>
+        <geometry><cylinder><radius>0.450</radius><length>1.100</length></cylinder></geometry>
+        <material>
+          <ambient>0.150 0.450 0.180 1.00</ambient>
+          <diffuse>0.150 0.450 0.180 1.00</diffuse>
+          <specular>0.300 0.300 0.300 1.00</specular>
+        </material>
+      </visual>
+      <visual name="barrel_5">
+        <pose>66.7448 -70.2021 0.5500</pose>
+        <geometry><cylinder><radius>0.450</radius><length>1.100</length></cylinder></geometry>
+        <material>
+          <ambient>0.100 0.300 0.600 1.00</ambient>
+          <diffuse>0.100 0.300 0.600 1.00</diffuse>
+          <specular>0.300 0.300 0.300 1.00</specular>
+        </material>
+      </visual>
+      <visual name="barrel_6">
+        <pose>63.4475 -70.7389 0.5500</pose>
+        <geometry><cylinder><radius>0.450</radius><length>1.100</length></cylinder></geometry>
+        <material>
+          <ambient>0.550 0.550 0.550 1.00</ambient>
+          <diffuse>0.550 0.550 0.550 1.00</diffuse>
+          <specular>0.300 0.300 0.300 1.00</specular>
+        </material>
+      </visual>
+      <visual name="barrel_7">
+        <pose>60.8003 -74.0605 0.5500</pose>
+        <geometry><cylinder><radius>0.450</radius><length>1.100</length></cylinder></geometry>
+        <material>
+          <ambient>0.850 0.720 0.050 1.00</ambient>
+          <diffuse>0.850 0.720 0.050 1.00</diffuse>
+          <specular>0.300 0.300 0.300 1.00</specular>
+        </material>
+      </visual>
+      <visual name="barrel_8">
+        <pose>64.7878 -76.3837 0.5500</pose>
+        <geometry><cylinder><radius>0.450</radius><length>1.100</length></cylinder></geometry>
+        <material>
+          <ambient>0.800 0.300 0.050 1.00</ambient>
+          <diffuse>0.800 0.300 0.050 1.00</diffuse>
+          <specular>0.300 0.300 0.300 1.00</specular>
+        </material>
+      </visual>
+      <visual name="barrel_9">
+        <pose>66.3323 -79.3459 0.5500</pose>
+        <geometry><cylinder><radius>0.450</radius><length>1.100</length></cylinder></geometry>
+        <material>
+          <ambient>0.150 0.450 0.180 1.00</ambient>
+          <diffuse>0.150 0.450 0.180 1.00</diffuse>
+          <specular>0.300 0.300 0.300 1.00</specular>
+        </material>
+      </visual>
+      <visual name="barrel_10">
+        <pose>70.3168 -80.8171 0.5500</pose>
+        <geometry><cylinder><radius>0.450</radius><length>1.100</length></cylinder></geometry>
+        <material>
+          <ambient>0.100 0.300 0.600 1.00</ambient>
+          <diffuse>0.100 0.300 0.600 1.00</diffuse>
+          <specular>0.300 0.300 0.300 1.00</specular>
+        </material>
+      </visual>
+      <visual name="barrel_11">
+        <pose>71.2713 -76.3019 0.5500</pose>
+        <geometry><cylinder><radius>0.450</radius><length>1.100</length></cylinder></geometry>
+        <material>
+          <ambient>0.600 0.350 0.100 1.00</ambient>
+          <diffuse>0.600 0.350 0.100 1.00</diffuse>
+          <specular>0.300 0.300 0.300 1.00</specular>
+        </material>
+      </visual>
+      <visual name="fence_12">
+        <pose>68.0000 -88.0000 0.8000 0 0 0.0000</pose>
+        <geometry><box><size>24.000 0.080 1.600</size></box></geometry>
+        <material>
+          <ambient>0.550 0.550 0.520 1.00</ambient>
+          <diffuse>0.550 0.550 0.520 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="post_13">
+        <pose>56.0000 -88.0000 0.8800</pose>
+        <geometry><box><size>0.160 0.160 1.760</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.300 1.00</ambient>
+          <diffuse>0.350 0.330 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="post_14">
+        <pose>62.0000 -88.0000 0.8800</pose>
+        <geometry><box><size>0.160 0.160 1.760</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.300 1.00</ambient>
+          <diffuse>0.350 0.330 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="post_15">
+        <pose>68.0000 -88.0000 0.8800</pose>
+        <geometry><box><size>0.160 0.160 1.760</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.300 1.00</ambient>
+          <diffuse>0.350 0.330 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="post_16">
+        <pose>74.0000 -88.0000 0.8800</pose>
+        <geometry><box><size>0.160 0.160 1.760</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.300 1.00</ambient>
+          <diffuse>0.350 0.330 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="post_17">
+        <pose>80.0000 -88.0000 0.8800</pose>
+        <geometry><box><size>0.160 0.160 1.760</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.300 1.00</ambient>
+          <diffuse>0.350 0.330 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="fence_18">
+        <pose>56.0000 -74.0000 0.8000 0 0 1.5708</pose>
+        <geometry><box><size>28.000 0.080 1.600</size></box></geometry>
+        <material>
+          <ambient>0.550 0.550 0.520 1.00</ambient>
+          <diffuse>0.550 0.550 0.520 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="post_19">
+        <pose>56.0000 -88.0000 0.8800</pose>
+        <geometry><box><size>0.160 0.160 1.760</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.300 1.00</ambient>
+          <diffuse>0.350 0.330 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="post_20">
+        <pose>56.0000 -81.0000 0.8800</pose>
+        <geometry><box><size>0.160 0.160 1.760</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.300 1.00</ambient>
+          <diffuse>0.350 0.330 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="post_21">
+        <pose>56.0000 -74.0000 0.8800</pose>
+        <geometry><box><size>0.160 0.160 1.760</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.300 1.00</ambient>
+          <diffuse>0.350 0.330 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="post_22">
+        <pose>56.0000 -67.0000 0.8800</pose>
+        <geometry><box><size>0.160 0.160 1.760</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.300 1.00</ambient>
+          <diffuse>0.350 0.330 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="post_23">
+        <pose>56.0000 -60.0000 0.8800</pose>
+        <geometry><box><size>0.160 0.160 1.760</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.300 1.00</ambient>
+          <diffuse>0.350 0.330 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="fence_24">
+        <pose>80.0000 -74.0000 0.8000 0 0 1.5708</pose>
+        <geometry><box><size>28.000 0.080 1.600</size></box></geometry>
+        <material>
+          <ambient>0.550 0.550 0.520 1.00</ambient>
+          <diffuse>0.550 0.550 0.520 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="post_25">
+        <pose>80.0000 -88.0000 0.8800</pose>
+        <geometry><box><size>0.160 0.160 1.760</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.300 1.00</ambient>
+          <diffuse>0.350 0.330 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="post_26">
+        <pose>80.0000 -81.0000 0.8800</pose>
+        <geometry><box><size>0.160 0.160 1.760</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.300 1.00</ambient>
+          <diffuse>0.350 0.330 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="post_27">
+        <pose>80.0000 -74.0000 0.8800</pose>
+        <geometry><box><size>0.160 0.160 1.760</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.300 1.00</ambient>
+          <diffuse>0.350 0.330 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="post_28">
+        <pose>80.0000 -67.0000 0.8800</pose>
+        <geometry><box><size>0.160 0.160 1.760</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.300 1.00</ambient>
+          <diffuse>0.350 0.330 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="post_29">
+        <pose>80.0000 -60.0000 0.8800</pose>
+        <geometry><box><size>0.160 0.160 1.760</size></box></geometry>
+        <material>
+          <ambient>0.350 0.330 0.300 1.00</ambient>
+          <diffuse>0.350 0.330 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="debris_1">
+        <pose>60 -66 1.1000</pose>
+        <geometry><box><size>4.000 3.000 2.200</size></box></geometry>
+        <material>
+          <ambient>0.420 0.380 0.300 1.00</ambient>
+          <diffuse>0.420 0.380 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="debris_2">
+        <pose>75 -64 0.9000</pose>
+        <geometry><box><size>3.000 4.000 1.800</size></box></geometry>
+        <material>
+          <ambient>0.360 0.340 0.280 1.00</ambient>
+          <diffuse>0.360 0.340 0.280 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      </link>
+    </model>
+    <model name="hills">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="link">
+      <visual name="hill_0">
+        <pose>-85 -85 -32.0000</pose>
+        <geometry><sphere><radius>34.000</radius></sphere></geometry>
+        <material>
+          <ambient>0.180 0.280 0.120 1.00</ambient>
+          <diffuse>0.180 0.280 0.120 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="hill_1">
+        <pose>88 75 -28.0000</pose>
+        <geometry><sphere><radius>30.000</radius></sphere></geometry>
+        <material>
+          <ambient>0.200 0.280 0.120 1.00</ambient>
+          <diffuse>0.200 0.280 0.120 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="hill_2">
+        <pose>-80 88 -24.0000</pose>
+        <geometry><sphere><radius>26.000</radius></sphere></geometry>
+        <material>
+          <ambient>0.220 0.280 0.120 1.00</ambient>
+          <diffuse>0.220 0.280 0.120 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      </link>
+    </model>
+    <model name="vehicles">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="link">
+      <visual name="truck_body_0">
+        <pose>27 -6 1.2000</pose>
+        <geometry><box><size>6.000 2.400 2.200</size></box></geometry>
+        <material>
+          <ambient>0.800 0.100 0.080 1.00</ambient>
+          <diffuse>0.800 0.100 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="truck_cab_0">
+        <pose>29.1000 -6 1.5000</pose>
+        <geometry><box><size>2.200 2.400 1.600</size></box></geometry>
+        <material>
+          <ambient>0.350 0.380 0.420 1.00</ambient>
+          <diffuse>0.350 0.380 0.420 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="wheel_2">
+        <pose>25.2000 -4.9000 0.5500 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.550</radius><length>0.350</length></cylinder></geometry>
+        <material>
+          <ambient>0.080 0.080 0.080 1.00</ambient>
+          <diffuse>0.080 0.080 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="wheel_3">
+        <pose>25.2000 -7.1000 0.5500 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.550</radius><length>0.350</length></cylinder></geometry>
+        <material>
+          <ambient>0.080 0.080 0.080 1.00</ambient>
+          <diffuse>0.080 0.080 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="wheel_4">
+        <pose>28.8000 -4.9000 0.5500 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.550</radius><length>0.350</length></cylinder></geometry>
+        <material>
+          <ambient>0.080 0.080 0.080 1.00</ambient>
+          <diffuse>0.080 0.080 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="wheel_5">
+        <pose>28.8000 -7.1000 0.5500 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.550</radius><length>0.350</length></cylinder></geometry>
+        <material>
+          <ambient>0.080 0.080 0.080 1.00</ambient>
+          <diffuse>0.080 0.080 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="beacon_0">
+        <pose>27 -6 2.4500</pose>
+        <geometry><sphere><radius>0.180</radius></sphere></geometry>
+        <material>
+          <ambient>0.200 0.400 1.000 1.00</ambient>
+          <diffuse>0.200 0.400 1.000 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.200 0.500 1.000 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="truck_body_1">
+        <pose>31 -6 1.2000</pose>
+        <geometry><box><size>6.000 2.400 2.200</size></box></geometry>
+        <material>
+          <ambient>0.800 0.100 0.080 1.00</ambient>
+          <diffuse>0.800 0.100 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="truck_cab_1">
+        <pose>33.1000 -6 1.5000</pose>
+        <geometry><box><size>2.200 2.400 1.600</size></box></geometry>
+        <material>
+          <ambient>0.350 0.380 0.420 1.00</ambient>
+          <diffuse>0.350 0.380 0.420 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="wheel_9">
+        <pose>29.2000 -4.9000 0.5500 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.550</radius><length>0.350</length></cylinder></geometry>
+        <material>
+          <ambient>0.080 0.080 0.080 1.00</ambient>
+          <diffuse>0.080 0.080 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="wheel_10">
+        <pose>29.2000 -7.1000 0.5500 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.550</radius><length>0.350</length></cylinder></geometry>
+        <material>
+          <ambient>0.080 0.080 0.080 1.00</ambient>
+          <diffuse>0.080 0.080 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="wheel_11">
+        <pose>32.8000 -4.9000 0.5500 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.550</radius><length>0.350</length></cylinder></geometry>
+        <material>
+          <ambient>0.080 0.080 0.080 1.00</ambient>
+          <diffuse>0.080 0.080 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="wheel_12">
+        <pose>32.8000 -7.1000 0.5500 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.550</radius><length>0.350</length></cylinder></geometry>
+        <material>
+          <ambient>0.080 0.080 0.080 1.00</ambient>
+          <diffuse>0.080 0.080 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="beacon_1">
+        <pose>31 -6 2.4500</pose>
+        <geometry><sphere><radius>0.180</radius></sphere></geometry>
+        <material>
+          <ambient>0.200 0.400 1.000 1.00</ambient>
+          <diffuse>0.200 0.400 1.000 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.200 0.500 1.000 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="truck_body_2">
+        <pose>27 -1.0000 1.2000</pose>
+        <geometry><box><size>6.000 2.400 2.200</size></box></geometry>
+        <material>
+          <ambient>0.900 0.900 0.880 1.00</ambient>
+          <diffuse>0.900 0.900 0.880 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="truck_cab_2">
+        <pose>29.1000 -1.0000 1.5000</pose>
+        <geometry><box><size>2.200 2.400 1.600</size></box></geometry>
+        <material>
+          <ambient>0.350 0.380 0.420 1.00</ambient>
+          <diffuse>0.350 0.380 0.420 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="wheel_16">
+        <pose>25.2000 0.1000 0.5500 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.550</radius><length>0.350</length></cylinder></geometry>
+        <material>
+          <ambient>0.080 0.080 0.080 1.00</ambient>
+          <diffuse>0.080 0.080 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="wheel_17">
+        <pose>25.2000 -2.1000 0.5500 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.550</radius><length>0.350</length></cylinder></geometry>
+        <material>
+          <ambient>0.080 0.080 0.080 1.00</ambient>
+          <diffuse>0.080 0.080 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="wheel_18">
+        <pose>28.8000 0.1000 0.5500 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.550</radius><length>0.350</length></cylinder></geometry>
+        <material>
+          <ambient>0.080 0.080 0.080 1.00</ambient>
+          <diffuse>0.080 0.080 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="wheel_19">
+        <pose>28.8000 -2.1000 0.5500 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.550</radius><length>0.350</length></cylinder></geometry>
+        <material>
+          <ambient>0.080 0.080 0.080 1.00</ambient>
+          <diffuse>0.080 0.080 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="beacon_2">
+        <pose>27 -1.0000 2.4500</pose>
+        <geometry><sphere><radius>0.180</radius></sphere></geometry>
+        <material>
+          <ambient>0.200 0.400 1.000 1.00</ambient>
+          <diffuse>0.200 0.400 1.000 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>0.200 0.500 1.000 1.00</emissive>
+        </material>
+      </visual>
+      </link>
+    </model>
     <model name="fire_hazard">
       <static>true</static>
-      <pose>14.0 0.0 0.2 0 0 0</pose>
+      <pose>60 28 0.2000 0 0 0</pose>
       <link name="link">
-        <collision name="collision">
-          <geometry><cylinder><radius>1.8</radius><length>0.4</length></cylinder></geometry>
-        </collision>
-        <!-- Зона выгорания / угли -->
-        <visual name="charred_ground">
-          <geometry><cylinder><radius>2.2</radius><length>0.05</length></cylinder></geometry>
-          <material>
-            <ambient>0.1 0.05 0.02 1</ambient>
-            <diffuse>0.15 0.08 0.03 1</diffuse>
-          </material>
-        </visual>
-        <!-- Ядро открытого огня (Эмиссионное пламя) -->
-        <visual name="fire_flame_core">
-          <pose>0 0 0.4 0 0 0</pose>
-          <geometry><cylinder><radius>1.4</radius><length>0.8</length></cylinder></geometry>
-          <material>
-            <ambient>1.0 0.2 0.0 1</ambient>
-            <diffuse>1.0 0.4 0.0 1</diffuse>
-            <emissive>1.0 0.35 0.0 1</emissive>
-          </material>
-        </visual>
-        <!-- Вершина пламени -->
-        <visual name="fire_flame_tip">
-          <pose>0 0 0.9 0 0 0</pose>
-          <geometry><cylinder><radius>0.8</radius><length>0.7</length></cylinder></geometry>
-          <material>
-            <ambient>1.0 0.7 0.0 1</ambient>
-            <diffuse>1.0 0.8 0.0 1</diffuse>
-            <emissive>1.0 0.75 0.0 1</emissive>
-          </material>
-        </visual>
+      <visual name="ash_outer">
+        <pose>0 0 -0.1700</pose>
+        <geometry><cylinder><radius>8.500</radius><length>0.060</length></cylinder></geometry>
+        <material>
+          <ambient>0.160 0.100 0.060 1.00</ambient>
+          <diffuse>0.160 0.100 0.060 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="charred_ground">
+        <pose>0 0 -0.1500</pose>
+        <geometry><cylinder><radius>6.500</radius><length>0.080</length></cylinder></geometry>
+        <material>
+          <ambient>0.100 0.060 0.040 1.00</ambient>
+          <diffuse>0.100 0.060 0.040 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="flame_base">
+        <pose>0 0 0.9000</pose>
+        <geometry><cylinder><radius>4.600</radius><length>2.200</length></cylinder></geometry>
+        <material>
+          <ambient>0.950 0.350 0.020 0.90</ambient>
+          <diffuse>0.950 0.350 0.020 0.90</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>1.000 0.350 0.000 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="flame_mid">
+        <pose>0.6000 -0.4000 1.5000</pose>
+        <geometry><cylinder><radius>3.000</radius><length>3.200</length></cylinder></geometry>
+        <material>
+          <ambient>1.000 0.620 0.020 0.85</ambient>
+          <diffuse>1.000 0.620 0.020 0.85</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>1.000 0.700 0.000 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="flame_core">
+        <pose>-0.5000 0.5000 2.0000</pose>
+        <geometry><cylinder><radius>1.700</radius><length>3.600</length></cylinder></geometry>
+        <material>
+          <ambient>1.000 0.850 0.100 0.90</ambient>
+          <diffuse>1.000 0.850 0.100 0.90</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>1.000 0.900 0.200 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="ember_0">
+        <pose>4.2000 0.0000 0.2500</pose>
+        <geometry><sphere><radius>0.350</radius></sphere></geometry>
+        <material>
+          <ambient>1.000 0.550 0.050 1.00</ambient>
+          <diffuse>1.000 0.550 0.050 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>1.000 0.400 0.000 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="ember_1">
+        <pose>2.6108 3.2900 0.2500</pose>
+        <geometry><sphere><radius>0.350</radius></sphere></geometry>
+        <material>
+          <ambient>1.000 0.550 0.050 1.00</ambient>
+          <diffuse>1.000 0.550 0.050 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>1.000 0.400 0.000 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="ember_2">
+        <pose>-0.9542 4.0902 0.2500</pose>
+        <geometry><sphere><radius>0.350</radius></sphere></geometry>
+        <material>
+          <ambient>1.000 0.550 0.050 1.00</ambient>
+          <diffuse>1.000 0.550 0.050 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>1.000 0.400 0.000 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="ember_3">
+        <pose>-3.7971 1.7950 0.2500</pose>
+        <geometry><sphere><radius>0.350</radius></sphere></geometry>
+        <material>
+          <ambient>1.000 0.550 0.050 1.00</ambient>
+          <diffuse>1.000 0.550 0.050 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>1.000 0.400 0.000 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="ember_4">
+        <pose>-3.7664 -1.8586 0.2500</pose>
+        <geometry><sphere><radius>0.350</radius></sphere></geometry>
+        <material>
+          <ambient>1.000 0.550 0.050 1.00</ambient>
+          <diffuse>1.000 0.550 0.050 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>1.000 0.400 0.000 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="ember_5">
+        <pose>-0.8853 -4.1056 0.2500</pose>
+        <geometry><sphere><radius>0.350</radius></sphere></geometry>
+        <material>
+          <ambient>1.000 0.550 0.050 1.00</ambient>
+          <diffuse>1.000 0.550 0.050 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>1.000 0.400 0.000 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="ember_6">
+        <pose>2.6657 -3.2456 0.2500</pose>
+        <geometry><sphere><radius>0.350</radius></sphere></geometry>
+        <material>
+          <ambient>1.000 0.550 0.050 1.00</ambient>
+          <diffuse>1.000 0.550 0.050 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+          <emissive>1.000 0.400 0.000 1.00</emissive>
+        </material>
+      </visual>
+      <visual name="smoke_0">
+        <pose>0.0000 0.0000 6.0000</pose>
+        <geometry><sphere><radius>3.200</radius></sphere></geometry>
+        <material>
+          <ambient>0.350 0.330 0.320 0.30</ambient>
+          <diffuse>0.350 0.330 0.320 0.30</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="smoke_1">
+        <pose>0.8000 -0.4000 8.5000</pose>
+        <geometry><sphere><radius>4.200</radius></sphere></geometry>
+        <material>
+          <ambient>0.350 0.330 0.320 0.22</ambient>
+          <diffuse>0.350 0.330 0.320 0.22</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="smoke_2">
+        <pose>1.6000 -0.8000 11.0000</pose>
+        <geometry><sphere><radius>5.000</radius></sphere></geometry>
+        <material>
+          <ambient>0.350 0.330 0.320 0.15</ambient>
+          <diffuse>0.350 0.330 0.320 0.15</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <collision name="collision_0">
+        <pose>0 0 0</pose>
+        <geometry><cylinder><radius>6.000</radius><length>0.600</length></cylinder></geometry>
+      </collision>
       </link>
     </model>
-
-    <!-- 2. РАЗЛИВ НЕФТЕПРОДУКТОВ / ТОПЛИВА (OIL SPILL HAZARD) -->
     <model name="oil_spill_hazard">
       <static>true</static>
-      <pose>8.0 10.0 0.02 0 0 0</pose>
+      <pose>-58 30 0.0200 0 0 0</pose>
       <link name="link">
-        <collision name="collision">
-          <geometry><cylinder><radius>2.4</radius><length>0.04</length></cylinder></geometry>
-        </collision>
-        <!-- Пятно темного вязкого мазута -->
-        <visual name="oil_slick">
-          <geometry><cylinder><radius>2.4</radius><length>0.04</length></cylinder></geometry>
-          <material>
-            <ambient>0.03 0.03 0.04 1</ambient>
-            <diffuse>0.05 0.05 0.06 1</diffuse>
-            <specular>0.6 0.6 0.7 1</specular>
-          </material>
-        </visual>
+      <visual name="spill_edge">
+        <pose>0 0 -0.0050</pose>
+        <geometry><cylinder><radius>10.000</radius><length>0.050</length></cylinder></geometry>
+        <material>
+          <ambient>0.100 0.090 0.080 1.00</ambient>
+          <diffuse>0.100 0.090 0.080 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="spill_core">
+        <pose>0 0 0.0050</pose>
+        <geometry><cylinder><radius>8.200</radius><length>0.060</length></cylinder></geometry>
+        <material>
+          <ambient>0.030 0.030 0.040 1.00</ambient>
+          <diffuse>0.030 0.030 0.040 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="spill_sheen">
+        <pose>0.6000 -0.4000 0.0100</pose>
+        <geometry><cylinder><radius>6.000</radius><length>0.065</length></cylinder></geometry>
+        <material>
+          <ambient>0.050 0.050 0.070 1.00</ambient>
+          <diffuse>0.050 0.050 0.070 1.00</diffuse>
+          <specular>0.800 0.800 0.900 1.00</specular>
+        </material>
+      </visual>
+      <visual name="spill_gloss">
+        <pose>-0.8000 0.6000 0.0120</pose>
+        <geometry><cylinder><radius>3.400</radius><length>0.070</length></cylinder></geometry>
+        <material>
+          <ambient>0.100 0.090 0.140 1.00</ambient>
+          <diffuse>0.100 0.090 0.140 1.00</diffuse>
+          <specular>0.900 0.900 1.000 1.00</specular>
+        </material>
+      </visual>
+      <collision name="collision_0">
+        <pose>0 0 0</pose>
+        <geometry><cylinder><radius>9.000</radius><length>0.080</length></cylinder></geometry>
+      </collision>
       </link>
     </model>
-
-    <!-- 3. ЗОНА ЗАТОПЛЕНИЯ / ПАВОДКА (FLOOD HAZARD) -->
     <model name="flood_hazard">
       <static>true</static>
-      <pose>-8.0 10.0 0.02 0 0 0</pose>
+      <pose>45 -56 0.0200 0 0 0</pose>
       <link name="link">
-        <collision name="collision">
-          <geometry><cylinder><radius>2.8</radius><length>0.04</length></cylinder></geometry>
-        </collision>
-        <!-- Водная гладь / выход реки -->
-        <visual name="water_pool">
-          <geometry><cylinder><radius>2.8</radius><length>0.04</length></cylinder></geometry>
-          <material>
-            <ambient>0.1 0.4 0.85 0.85</ambient>
-            <diffuse>0.15 0.5 0.9 0.85</diffuse>
-            <specular>0.9 0.9 1.0 1</specular>
-          </material>
-        </visual>
+      <visual name="flood_edge">
+        <pose>0 0 -0.0020</pose>
+        <geometry><cylinder><radius>11.500</radius><length>0.060</length></cylinder></geometry>
+        <material>
+          <ambient>0.100 0.320 0.550 0.85</ambient>
+          <diffuse>0.100 0.320 0.550 0.85</diffuse>
+          <specular>0.700 0.750 0.800 1.00</specular>
+        </material>
+      </visual>
+      <visual name="flood_water">
+        <pose>0 0 0.0080</pose>
+        <geometry><cylinder><radius>9.500</radius><length>0.070</length></cylinder></geometry>
+        <material>
+          <ambient>0.080 0.420 0.700 0.80</ambient>
+          <diffuse>0.080 0.420 0.700 0.80</diffuse>
+          <specular>0.800 0.850 0.900 1.00</specular>
+        </material>
+      </visual>
+      <visual name="flood_ripple">
+        <pose>1.5000 -1.0000 0.0140</pose>
+        <geometry><cylinder><radius>4.000</radius><length>0.080</length></cylinder></geometry>
+        <material>
+          <ambient>0.200 0.550 0.800 0.75</ambient>
+          <diffuse>0.200 0.550 0.800 0.75</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="flood_car_wreck">
+        <pose>-6.0000 4.0000 0.4000</pose>
+        <geometry><box><size>3.000 1.800 0.800</size></box></geometry>
+        <material>
+          <ambient>0.400 0.380 0.300 1.00</ambient>
+          <diffuse>0.400 0.380 0.300 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <collision name="collision_0">
+        <pose>0 0 0</pose>
+        <geometry><cylinder><radius>10.500</radius><length>0.100</length></cylinder></geometry>
+      </collision>
       </link>
     </model>
-
-    <!-- 4. НЕСАНКЦИОНИРОВАННАЯ СВАЛКА / ТОКСИЧНЫЕ БОЧКИ (WASTE HAZARD) -->
     <model name="waste_hazard">
       <static>true</static>
-      <pose>12.0 -9.0 0.4 0 0 0</pose>
+      <pose>68 -72 0.4000 0 0 0</pose>
       <link name="link">
-        <collision name="collision">
-          <geometry><box><size>2.2 2.2 0.9</size></box></geometry>
-        </collision>
-        <!-- Бочка 1 (Токсично-желтая) -->
-        <visual name="drum_1">
-          <pose>-0.4 -0.3 0 0 0 0</pose>
-          <geometry><cylinder><radius>0.3</radius><length>0.85</length></cylinder></geometry>
-          <material><ambient>0.9 0.75 0.0 1</ambient><diffuse>0.9 0.8 0.0 1</diffuse></material>
-        </visual>
-        <!-- Бочка 2 (Сигнально-оранжевая) -->
-        <visual name="drum_2">
-          <pose>0.4 -0.2 0 0 0 0</pose>
-          <geometry><cylinder><radius>0.3</radius><length>0.85</length></cylinder></geometry>
-          <material><ambient>0.85 0.3 0.0 1</ambient><diffuse>0.9 0.35 0.0 1</diffuse></material>
-        </visual>
-        <!-- Бочка 3 (Поваленная) -->
-        <visual name="drum_3">
-          <pose>0.0 0.4 -0.15 1.570796 0 0.5</pose>
-          <geometry><cylinder><radius>0.3</radius><length>0.85</length></cylinder></geometry>
-          <material><ambient>0.2 0.5 0.2 1</ambient><diffuse>0.25 0.6 0.25 1</diffuse></material>
-        </visual>
+      <visual name="waste_hill">
+        <pose>0 0 -3.0000</pose>
+        <geometry><sphere><radius>7.000</radius></sphere></geometry>
+        <material>
+          <ambient>0.280 0.220 0.130 1.00</ambient>
+          <diffuse>0.280 0.220 0.130 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="waste_pad">
+        <pose>0 0 -0.2500</pose>
+        <geometry><cylinder><radius>9.000</radius><length>0.200</length></cylinder></geometry>
+        <material>
+          <ambient>0.320 0.260 0.150 1.00</ambient>
+          <diffuse>0.320 0.260 0.150 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <visual name="barrel_2">
+        <pose>3.8000 0.0000 0.5500</pose>
+        <geometry><cylinder><radius>0.450</radius><length>1.100</length></cylinder></geometry>
+        <material>
+          <ambient>0.850 0.720 0.050 1.00</ambient>
+          <diffuse>0.850 0.720 0.050 1.00</diffuse>
+          <specular>0.300 0.300 0.300 1.00</specular>
+        </material>
+      </visual>
+      <visual name="barrel_3">
+        <pose>1.8908 3.2962 0.5500</pose>
+        <geometry><cylinder><radius>0.450</radius><length>1.100</length></cylinder></geometry>
+        <material>
+          <ambient>0.800 0.300 0.050 1.00</ambient>
+          <diffuse>0.800 0.300 0.050 1.00</diffuse>
+          <specular>0.300 0.300 0.300 1.00</specular>
+        </material>
+      </visual>
+      <visual name="barrel_4">
+        <pose>-1.9184 3.2802 0.5500</pose>
+        <geometry><cylinder><radius>0.450</radius><length>1.100</length></cylinder></geometry>
+        <material>
+          <ambient>0.150 0.450 0.180 1.00</ambient>
+          <diffuse>0.150 0.450 0.180 1.00</diffuse>
+          <specular>0.300 0.300 0.300 1.00</specular>
+        </material>
+      </visual>
+      <visual name="barrel_5">
+        <pose>-3.7999 -0.0319 0.5500</pose>
+        <geometry><cylinder><radius>0.450</radius><length>1.100</length></cylinder></geometry>
+        <material>
+          <ambient>0.100 0.300 0.600 1.00</ambient>
+          <diffuse>0.100 0.300 0.600 1.00</diffuse>
+          <specular>0.300 0.300 0.300 1.00</specular>
+        </material>
+      </visual>
+      <visual name="barrel_6">
+        <pose>-1.8630 -3.3120 0.5500</pose>
+        <geometry><cylinder><radius>0.450</radius><length>1.100</length></cylinder></geometry>
+        <material>
+          <ambient>0.550 0.550 0.550 1.00</ambient>
+          <diffuse>0.550 0.550 0.550 1.00</diffuse>
+          <specular>0.300 0.300 0.300 1.00</specular>
+        </material>
+      </visual>
+      <visual name="barrel_7">
+        <pose>1.9459 -3.2640 0.5500</pose>
+        <geometry><cylinder><radius>0.450</radius><length>1.100</length></cylinder></geometry>
+        <material>
+          <ambient>0.700 0.120 0.080 1.00</ambient>
+          <diffuse>0.700 0.120 0.080 1.00</diffuse>
+          <specular>0.300 0.300 0.300 1.00</specular>
+        </material>
+      </visual>
+      <visual name="waste_debris_1">
+        <pose>-2.5000 -2.0000 0.3000</pose>
+        <geometry><box><size>2.600 2.000 1.400</size></box></geometry>
+        <material>
+          <ambient>0.360 0.330 0.260 1.00</ambient>
+          <diffuse>0.360 0.330 0.260 1.00</diffuse>
+          <specular>0.080 0.080 0.080 1.00</specular>
+        </material>
+      </visual>
+      <collision name="collision_0">
+        <pose>0 0 0.3000</pose>
+        <geometry><box><size>9.000 9.000 1.400</size></box></geometry>
+      </collision>
       </link>
     </model>
-
-    <!-- Окружение: Деревья лесного массива -->
-    <model name="tree_1">
-      <static>true</static>
-      <pose>6.0 4.0 1.5 0 0 0</pose>
-      <link name="link">
-        <visual name="trunk"><geometry><cylinder><radius>0.18</radius><length>3.0</length></cylinder></geometry><material><ambient>0.35 0.2 0.1 1</ambient><diffuse>0.35 0.2 0.1 1</diffuse></material></visual>
-        <visual name="crown"><pose>0 0 1.6 0 0 0</pose><geometry><sphere><radius>1.3</radius></sphere></geometry><material><ambient>0.1 0.45 0.1 1</ambient><diffuse>0.1 0.5 0.1 1</diffuse></material></visual>
-      </link>
-    </model>
-
-    <model name="tree_2">
-      <static>true</static>
-      <pose>10.0 -4.5 1.5 0 0 0</pose>
-      <link name="link">
-        <visual name="trunk"><geometry><cylinder><radius>0.18</radius><length>3.0</length></cylinder></geometry><material><ambient>0.35 0.2 0.1 1</ambient><diffuse>0.35 0.2 0.1 1</diffuse></material></visual>
-        <visual name="crown"><pose>0 0 1.6 0 0 0</pose><geometry><sphere><radius>1.4</radius></sphere></geometry><material><ambient>0.12 0.5 0.12 1</ambient><diffuse>0.12 0.55 0.12 1</diffuse></material></visual>
-      </link>
-    </model>
-
-    <model name="tree_3">
-      <static>true</static>
-      <pose>16.0 6.0 1.5 0 0 0</pose>
-      <link name="link">
-        <visual name="trunk"><geometry><cylinder><radius>0.2</radius><length>3.0</length></cylinder></geometry><material><ambient>0.35 0.2 0.1 1</ambient><diffuse>0.35 0.2 0.1 1</diffuse></material></visual>
-        <visual name="crown"><pose>0 0 1.7 0 0 0</pose><geometry><sphere><radius>1.5</radius></sphere></geometry><material><ambient>0.08 0.42 0.08 1</ambient><diffuse>0.08 0.45 0.08 1</diffuse></material></visual>
-      </link>
-    </model>
-
-    <model name="tree_4">
-      <static>true</static>
-      <pose>4.0 -8.0 1.5 0 0 0</pose>
-      <link name="link">
-        <visual name="trunk"><geometry><cylinder><radius>0.16</radius><length>3.0</length></cylinder></geometry><material><ambient>0.35 0.2 0.1 1</ambient><diffuse>0.35 0.2 0.1 1</diffuse></material></visual>
-        <visual name="crown"><pose>0 0 1.5 0 0 0</pose><geometry><sphere><radius>1.2</radius></sphere></geometry><material><ambient>0.1 0.46 0.1 1</ambient><diffuse>0.1 0.5 0.1 1</diffuse></material></visual>
-      </link>
-    </model>
-
-    <!-- Крупный спасательный БПЛА МЧС (STL by Studio Mechanik) -->
+    <!-- Кастомный дрон МЧС (патрулирует на высоте 8 м) -->
     <include>
-      <uri>model://largedrone</uri>
+      <uri>model://mchs_drone</uri>
+      <pose>0 0 22.0 0 0 0</pose>
     </include>
   </world>
 </sdf>

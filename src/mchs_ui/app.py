@@ -15,6 +15,18 @@ import datetime
 import json
 import threading
 import urllib.request
+
+# --- Windows DPI: окно должно полностью помещаться на экран (100-150%) ---
+if sys.platform == "win32":
+    try:
+        import ctypes
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)  # Per-Monitor V2
+        except Exception:
+            ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
 import tkinter as tk
 import customtkinter as ctk
 import cv2
@@ -72,8 +84,7 @@ class OkoMchsOperatorApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("ОКО МЧС — АВТОНОМНЫЙ ПУЛЬТ ОПЕРАТОРА ЦУКС (ВЕРСИЯ 2.0)")
-        self.geometry("1280x820")
-        self.minsize(1120, 720)
+        self._fit_window()
 
         # Переменные полетной модели и состояния (Демо-режим активен по умолчанию)
         self.is_flying = True
@@ -101,6 +112,16 @@ class OkoMchsOperatorApp(ctk.CTk):
         self.setup_ui()
         self.log_event("Инициализация системы 'Око МЧС'. Связь с БПЛА установлена (RTK FIX).")
         self.update_loop()
+
+    def _fit_window(self):
+        """Подгоняем окно под реальный экран (масштаб Windows 125-150%)."""
+        self.update_idletasks()
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = max(980, min(1280, screen_w - 60))
+        height = max(660, min(820, screen_h - 100))
+        self.geometry(f"{width}x{height}+{max(0, (screen_w - width) // 2)}+{max(0, (screen_h - height) // 3)}")
+        self.minsize(980, 660)
 
     def setup_ui(self):
         # 1. Верхний командный баннер (Header)
@@ -142,7 +163,7 @@ class OkoMchsOperatorApp(ctk.CTk):
 
         ctk.CTkLabel(
             map_header,
-            text="🗺 ТАКТИЧЕСКИЙ РАДАР ОБЛЕТА (ПОЛИГОН: 50×50 М)",
+            text="🗺 ТАКТИЧЕСКИЙ РАДАР ОБЛЕТА (ПОЛИГОН: 200×200 М)",
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color="#A4B3C6"
         ).pack(side="left")
@@ -393,7 +414,7 @@ class OkoMchsOperatorApp(ctk.CTk):
 
         # 2. Границы полигона патрулирования (50×50 м)
         c.create_rectangle(50, 40, w - 30, h - 40, outline="#2E4057", width=1, dash=(3, 3))
-        c.create_text(60, 52, text="ЗОНА ПАТРУЛИРОВАНИЯ БПЛА [50×50 М]", fill="#5C7080", font=("Consolas", 9, "bold"), anchor="w")
+        c.create_text(60, 52, text="ЗОНА ПАТРУЛИРОВАНИЯ БПЛА [200×200 М]", fill="#5C7080", font=("Consolas", 9, "bold"), anchor="w")
 
         # 3. Отрисовка 4 объектов ЧС на карте
         for key, hzd in HAZARDS_DB.items():
@@ -465,8 +486,9 @@ class OkoMchsOperatorApp(ctk.CTk):
             # Отображаем в UI
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(rgb_frame)
-            self.tk_cam_image = ImageTk.PhotoImage(image=img)
-            self.cam_canvas.create_image(0, 0, anchor="nw", image=self.tk_cam_image)
+            imgtk = ImageTk.PhotoImage(image=img)
+            self.cam_label.imgtk = imgtk
+            self.cam_label.configure(image=imgtk)
             return
 
         # Иначе — автономный тактический синтетический рендер

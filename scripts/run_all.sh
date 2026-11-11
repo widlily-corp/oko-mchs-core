@@ -1,86 +1,112 @@
 #!/usr/bin/env bash
-# Единый запуск полного демонстрационного комплекса «Око МЧС» с графическими окнами
+# =============================================================================
+#  «ОКО МЧС» — единый запуск комплекса (большая арена 200×200 м).
+#
+#  WSL: gzserver (арена + камера + ROS 2 плагины)
+#       → нода зрения: аннотированный кадр + HTTP-стрим :8080
+#       → маршрутный автопилот: облёт 4 очагов ЧС / возврат на базу
+#  Windows: АРМ оператора (src/mchs_ui/app.py) забирает поток с :8080
+#
+#  Остановка: Ctrl+C.  Логи: /tmp/mchs_demo/
+#  Флаги: MCHS_NO_UI=1 — не открывать окно АРМ автоматически.
+# =============================================================================
 set -e
 
-echo "=========================================================="
-echo "   ЗАПУСК АВТОНОМНОГО КОМПЛЕКСА МОНИТОРИНГА «ОКО МЧС»     "
-echo "=========================================================="
-
-SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 REPO_DIR=$(dirname "$SCRIPT_DIR")
+WORLD="$REPO_DIR/src/mchs_simulation/worlds/mchs_emergency_arena.world"
+LOG_DIR="${MCHS_LOG_DIR:-/tmp/mchs_demo}"
+mkdir -p "$LOG_DIR"
 
-# 0. Настройка графической подсистемы WSLg для вывода 3D-окна Gazebo и камеры на экран Windows
-export DISPLAY="${DISPLAY:-:0}"
-export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
-export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/mnt/wslg/runtime-dir}"
-export PULSE_SERVER="${PULSE_SERVER:-/mnt/wslg/PulseServer}"
+echo "=========================================================="
+echo "   ЗАПУСК КОМПЛЕКСА «ОКО МЧС» — АРЕНА 200×200 М            "
+echo "=========================================================="
+
+if [ -z "${ROS_DISTRO:-}" ] && [ -f /opt/ros/humble/setup.bash ]; then
+    # shellcheck disable=SC1091
+    source /opt/ros/humble/setup.bash
+fi
+if ! command -v ros2 >/dev/null 2>&1; then
+    echo "[ОШИБКА] ROS 2 Humble не найден (source /opt/ros/humble/setup.bash)"
+    exit 1
+fi
+
+export GAZEBO_MODEL_PATH="$REPO_DIR/src/mchs_simulation/models:/usr/share/gazebo-11/models:${GAZEBO_MODEL_PATH:-}"
 export LIBGL_ALWAYS_SOFTWARE=1
 export GALLIUM_DRIVER=llvmpipe
 export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
-export GAZEBO_MODEL_DATABASE_URI=""
 
-# Инициализируем корректную геометрию окна Gazebo (1024x768) и ракурс камеры
-mkdir -p "$HOME/.gazebo"
-cat << 'EOF' > "$HOME/.gazebo/gui.ini"
-[geometry]
-x=50
-y=50
-width=1024
-height=768
+PIDS=()
+cleanup() {
+    echo ""
+    echo "[INFO] Остановка комплекса «Око МЧС»..."
+    for pid in "${PIDS[@]:-}"; do
+        kill -9 "$pid" 2>/dev/null || true
+    done
+    pkill -9 -f "[m]chs_vision_node.py" 2>/dev/null || true
+    pkill -9 -f "[m]chs_pilot_route.py" 2>/dev/null || true
+    pkill -9 -x gzserver 2>/dev/null || true
+    echo "[INFO] Готово."
+}
+trap cleanup EXIT INT TERM
 
-[camera]
-x=0
-y=-25
-z=15
-roll=0
-pitch=0.6
-yaw=1.57
+echo "[1/3] Запуск Gazebo 11: большая арена, дрон, камера, ROS 2 плагины..."
+gzserver --verbose "$WORLD" \
+    -s libgazebo_ros_init.so \
+    -s libgazebo_ros_factory.so \
+    -s libgazebo_ros_state.so \
+    > "$LOG_DIR/gzserver.log" 2>&1 &
+PIDS+=($!)
+
+CAMERA_READY=0
+for _ in $(seq 1 45); do
+    if ros2 topic list 2>/dev/null | grep -q "/mchs/camera/image_raw"; then
+        CAMERA_READY=1
+        break
+    fi
+    sleep 1
+done
+if [ "$CAMERA_READY" -eq 1 ]; then
+    echo "       Камера БПЛА активна: /mchs/camera/image_raw"
+else
+    echo "       [ВНИМАНИЕ] Камера не поднялась за 45 c — см. $LOG_DIR/gzserver.log"
+fi
+
+echo "[2/3] Запуск бортовой ноды зрения (детекция + веб-стрим :8080)..."
+python3 "$REPO_DIR/src/mchs_vision/scripts/mchs_vision_node.py" \
+    --ros-args \
+    -p enable_stream:=true \
+    -p show_window:=false \
+    -p stream_port:=8080 \
+    > "$LOG_DIR/vision.log" 2>&1 &
+PIDS+=($!)
+
+echo "[3/3] Запуск автопилота: БАЗА → ПОЖАР → НЕФТЕБАЗА → ЗАТОПЛЕНИЕ → СВАЛКА..."
+python3 "$REPO_DIR/src/mchs_control/scripts/mchs_pilot_route.py" \
+    > "$LOG_DIR/pilot.log" 2>&1 &
+PIDS+=($!)
+
+sleep 2
+
+if [ "${MCHS_NO_UI:-0}" != "1" ] && command -v powershell.exe >/dev/null 2>&1; then
+    UI_UNC='\\wsl.localhost\Ubuntu-22.04\root\oko-mchs-core\src\mchs_ui\app.py'
+    echo "[4/4] Открываю АРМ оператора на Windows..."
+    powershell.exe -NoProfile -Command \
+        "Start-Process -FilePath python -ArgumentList '$UI_UNC'" \
+        >/dev/null 2>&1 || echo "       Не удалось автозапустить АРМ (python/UNC)."
+fi
+
+cat <<EOF
+==========================================================
+>>> ДЕМОНСТРАЦИЯ АКТИВНА — АРЕНА 200×200 М
+    АРМ оператора (Windows):  живая камера БПЛА + детекция ЧС
+    Веб-стрим:                http://localhost:8080
+    Маршрут дрона:            база → пожар → нефтебаза → затопление → свалка
+    Переместить очаг:         python3 src/mchs_simulation/scripts/arena_controller.py --hazard fire --x 10 --y 5
+
+    Логи: $LOG_DIR/
+    Остановка: Ctrl+C в этом окне.
+==========================================================
 EOF
 
-# Пути к 3D-моделям
-export GAZEBO_MODEL_PATH="$REPO_DIR/src/mchs_simulation/models:/usr/share/gazebo-11/models:$GAZEBO_MODEL_PATH"
-
-# Подключение среды ROS 2
-if [ -z "$ROS_DISTRO" ]; then
-    if [ -f "/opt/ros/humble/setup.bash" ]; then
-        echo "[INFO] Подключение ROS 2 Humble..."
-        source /opt/ros/humble/setup.bash
-    fi
-fi
-
-# 1. Запуск симуляции Gazebo 11 (Сервер физики + 3D-окно gzclient)
-echo "[1/3] Запуск 3D-симулятора Gazebo 11 (gzserver + 3D GUI gzclient)..."
-if command -v ros2 &> /dev/null; then
-    ros2 launch "$REPO_DIR/src/mchs_simulation/launch/simulation.launch.py" &
-    SIM_PID=$!
-else
-    python3 "$REPO_DIR/src/mchs_simulation/launch/simulation.launch.py" &
-    SIM_PID=$!
-fi
-
-# Даем время инициализироваться 3D-окну Gazebo и камере
-echo "[INFO] Ожидание инициализации 3D-мира Gazebo (6 сек)..."
-sleep 6
-
-# 2. Запуск ноды компьютерного зрения (Окно видеопотока с камеры БПЛА)
-echo "[2/3] Запуск ноды компьютерного зрения (Окно тактической камеры БПЛА)..."
-python3 "$REPO_DIR/src/mchs_vision/scripts/mchs_vision_node.py" &
-VISION_PID=$!
-
-sleep 1
-
-# 3. Запуск полетного автопилота БПЛА
-echo "[3/3] Старт программы патрулирования БПЛА..."
-python3 "$REPO_DIR/src/mchs_control/scripts/mchs_pilot_node.py" &
-PILOT_PID=$!
-
-echo "=========================================================="
-echo ">>> ВСЕ СИСТЕМЫ АКТИВНЫ!"
-echo ">>> Открыты 2 графических окна:"
-echo "    1) Gazebo 11 — 3D-вид полигона и полет дрона"
-echo "    2) OpenCV — живая картинка с камеры БПЛА и ИИ-детекция"
-echo ">>> Нажмите Ctrl+C для завершения работы."
-echo "=========================================================="
-
-trap "kill -9 $SIM_PID $VISION_PID $PILOT_PID 2>/dev/null || true; exit 0" SIGINT SIGTERM
 wait

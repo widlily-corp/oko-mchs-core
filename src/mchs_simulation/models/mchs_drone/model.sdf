@@ -2,7 +2,7 @@
 <sdf version="1.6">
   <model name="mchs_drone">
     <static>false</static>
-    <pose>0 0 0.15 0 0 0</pose>
+    <pose>0 0 0 0 0 0</pose>
 
     <link name="base_link">
       <inertial>
@@ -158,7 +158,7 @@
           </image>
           <clip>
             <near>0.1</near>
-            <far>300.0</far>
+            <far>800.0</far>
           </clip>
         </camera>
         <plugin name="mchs_camera_controller" filename="libgazebo_ros_camera.so">
@@ -171,6 +171,7 @@
           <frame_name>camera_optical_link</frame_name>
         </plugin>
       </sensor>
+          <gravity>false</gravity>
     </link>
 
     <!-- Плагин кинематического перемещения БПЛА через ROS 2 топик /mchs/cmd_vel -->
