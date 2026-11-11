@@ -97,6 +97,23 @@ def test_pipeline_event_throttle(arena):
     assert len(third.events) == 1
 
 
+def test_event_ids_have_no_gaps_when_throttled(arena):
+    """EventFactory нумерует только реально опубликованные события."""
+    throttle = EventThrottle(cooldown_s=3.0, min_interval_s=1.0)
+    pipeline = make_pipeline(throttle=throttle)
+    center = SCENES["fire_critical"].center_px
+    frame = arena.crop(center)
+    pose = arena.pose_for(center)
+    start = datetime.now(timezone.utc)
+
+    first = pipeline.process(frame, pose, start)
+    pipeline.process(frame, pose, start + timedelta(seconds=0.2))
+    third = pipeline.process(frame, pose, start + timedelta(seconds=3.5))
+
+    assert first.events[0]["event_id"].endswith("000001")
+    assert third.events[0]["event_id"].endswith("000002")
+
+
 def test_pipeline_returns_empty_on_clean_scene(arena):
     pipeline = make_pipeline()
     center = SCENES["clean"].center_px

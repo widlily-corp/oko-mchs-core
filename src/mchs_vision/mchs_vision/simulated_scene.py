@@ -343,4 +343,6 @@ class SyntheticArena:
             "height": FRAME_HEIGHT,
             "hfov_deg": 80.0,
             "pitch_down_deg": 90.0,
+            "mount_forward_m": 0.0,
+            "mount_up_m": 0.0,
         }

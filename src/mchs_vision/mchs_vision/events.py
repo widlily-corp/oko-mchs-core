@@ -128,9 +128,20 @@ class EventThrottle:
         self._last: Dict[str, Tuple[datetime, float, str]] = {}
 
     def allow(self, event: Dict, timestamp: datetime) -> bool:
-        incident_id = event.get("incident_id", "")
-        area = float(event.get("area_sq_m", 0.0))
-        threat = str(event.get("threat_level", ""))
+        return self.should_emit(
+            str(event.get("incident_id", "")),
+            float(event.get("area_sq_m", 0.0)),
+            str(event.get("threat_level", "")),
+            timestamp,
+        )
+
+    def should_emit(self, incident_id: str, area: float, threat: str,
+                    timestamp: datetime) -> bool:
+        """Решить, нужно ли событие, не собирая JSON заранее.
+
+        Благодаря этому ``EventFactory`` нумерует только реально
+        опубликованные события, без «дыр» в event_id.
+        """
         previous = self._last.get(incident_id)
 
         if previous is None:

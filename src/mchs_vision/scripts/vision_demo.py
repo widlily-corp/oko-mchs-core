@@ -42,9 +42,13 @@ VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
 
 
 def load_manifest(path: str) -> Optional[dict]:
-    manifest_path = path
+    """Прочитать manifest.json, но не пытаться парсить PNG как JSON."""
     if os.path.isdir(path):
         manifest_path = os.path.join(path, "manifest.json")
+    elif os.path.basename(path) == "manifest.json":
+        manifest_path = path
+    else:
+        return None
     if not os.path.isfile(manifest_path):
         return None
     with open(manifest_path, "r", encoding="utf-8") as handle:
@@ -61,6 +65,10 @@ def build_camera(manifest: Optional[dict], args, frame_shape: Tuple[int, int]
             height=int(camera.get("height", height)),
             hfov_deg=float(camera.get("hfov_deg", args.hfov)),
             pitch_down_deg=float(camera.get("pitch_down_deg", args.pitch)),
+            # В синтетическом датасете камера совмещена с центром дрона;
+            # для реального борта смещение задаёт manifest.
+            mount_forward_m=float(camera.get("mount_forward_m", 0.0)),
+            mount_up_m=float(camera.get("mount_up_m", 0.0)),
         )
     return CameraConfig(
         width=width,

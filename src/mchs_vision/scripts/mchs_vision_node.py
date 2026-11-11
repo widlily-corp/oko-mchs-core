@@ -14,9 +14,9 @@
     python3 src/mchs_vision/scripts/mchs_vision_node.py
 
 Параметры (ROS 2):
-    camera_pitch_down_deg=45.0   # текущая камера mchs_drone/model.sdf
+    camera_pitch_down_deg=45.0   # камера largedrone/model.sdf
     camera_pitch_down_deg=90.0   # строго надирная камера
-    fallback_altitude_m=8.0      # если odom.z < min_valid_altitude_m
+    fallback_altitude_m=22.0     # если odom.z < min_valid_altitude_m
     enable_stream:=true          # HTTP-поток для АРМ на :8080
     show_window:=true            # локальное окно OpenCV (WSLg)
 """
@@ -114,11 +114,11 @@ class MchsVisionNode(Node):
         self.image_height = int(self.declare_parameter(
             "image_height", 720).value)
         self.mount_forward_m = float(self.declare_parameter(
-            "camera_mount_forward_m", 0.12).value)
+            "camera_mount_forward_m", 0.42).value)
         self.mount_up_m = float(self.declare_parameter(
-            "camera_mount_up_m", -0.05).value)
+            "camera_mount_up_m", 0.12).value)
         self.fallback_altitude_m = float(self.declare_parameter(
-            "fallback_altitude_m", 8.0).value)
+            "fallback_altitude_m", 22.0).value)
         self.min_valid_altitude_m = float(self.declare_parameter(
             "min_valid_altitude_m", 1.0).value)
         self.max_range_m = float(self.declare_parameter(
@@ -366,12 +366,18 @@ class MchsVisionNode(Node):
     # ------------------------------------------------------------------
     @staticmethod
     def _stamp_to_datetime(msg: Image) -> datetime:
+        """Время события: ROS-штамп, если он похож на календарный.
+
+        Gazebo с симуляционным временем начинает `/clock` с 1970 года.
+        Писать в протокол МЧС «1970-01-01» нельзя, поэтому для таких
+        штампов берём настенное время. Для реального борта с GPS/UTC
+        используется штамп камеры.
+        """
         stamp = msg.header.stamp
-        if stamp.sec == 0 and stamp.nanosec == 0:
+        seconds = float(stamp.sec) + float(stamp.nanosec) * 1e-9
+        if seconds < 946684800.0:  # 2000-01-01T00:00:00Z
             return datetime.now().astimezone()
-        return datetime.fromtimestamp(
-            float(stamp.sec) + float(stamp.nanosec) * 1e-9, tz=timezone.utc
-        ).astimezone()
+        return datetime.fromtimestamp(seconds, tz=timezone.utc).astimezone()
 
     def _log_event(self, event: dict) -> None:
         incident_id = event.get("incident_id", "")
