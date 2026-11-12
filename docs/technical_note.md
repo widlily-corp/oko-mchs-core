@@ -391,6 +391,15 @@ python scripts/diagnose_logs.py --bundle
 
 ### Запуск полного комплекта автотестов:
 ```bash
-PYTHONPATH=src python3 -m pytest src/ tests/
-# Результат: 71 passed in 4.9s (100% зелёные тесты)
+PYTHONPATH=src:src/mchs_vision:src/mchs_core:src/mchs_control:src/mchs_ui:scripts \
+python3 -m pytest tests src/mchs_vision/tests src/mchs_core/tests src/mchs_control/test src/mchs_ui/tests -q
+# Последний проверенный результат: 164 passed in 7.77s; время зависит от среды.
 ```
+
+
+После исправления курса маршрутный автопилот поворачивает корпус к следующей
+точке до начала поступательного движения (допуск 15°, ограничение 1 рад/с).
+АРМ отображает фактический курс корпуса `body_yaw_deg`; старый `yaw_deg`
+поддерживается как fallback. Наклон камеры остаётся 45°, координаты полигона
+и формат ROS-топиков не изменены. Проверка команд покрыта регрессиями,
+живой полёт после изменения ещё требует ручного smoke.
