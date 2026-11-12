@@ -132,9 +132,6 @@ class HazardDetector:
         height, width = frame_bgr.shape[:2]
         hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
         gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-        blurred = cv2.GaussianBlur(gray, (self.config.texture_blur_ksize,
-                                         self.config.texture_blur_ksize), 0)
-        laplacian = cv2.Laplacian(blurred, cv2.CV_32F)
 
         claimed = np.zeros((height, width), dtype=np.uint8)
         detections: List[Detection] = []
@@ -144,7 +141,7 @@ class HazardDetector:
             if np.any(claimed):
                 mask[claimed > 0] = 0
             detections.extend(
-                self._detect_class(frame_bgr, hsv, laplacian, mask, claimed,
+                self._detect_class(frame_bgr, hsv, gray, mask, claimed,
                                    spec, width, height)
             )
 
@@ -226,6 +223,44 @@ class HazardDetector:
         cyan = cv2.bitwise_and(cyan, mask_roi)
         return float(cv2.countNonZero(cyan)) / float(pixel_count)
 
+    @staticmethod
+    def _compute_roi_texture(gray: np.ndarray, x: int, y: int, bw: int, bh: int,
+                             mask_roi: np.ndarray, ksize: int = 5) -> float:
+        """Вычисление стандартного отклонения лапласиана внутри ROI кандидата.
+
+        Исключает полнокадровое выделение памяти под float32 лапласиан (1280x720 ~3.7MB)
+        и полнокадровый GaussianBlur. Паддинг устраняет краевые эффекты свёртки.
+        """
+        if bw <= 0 or bh <= 0 or mask_roi is None or mask_roi.size == 0:
+            return 0.0
+
+        ksize = max(1, int(ksize))
+        if ksize % 2 == 0:
+            ksize += 1
+
+        pad = max(4, (ksize // 2) + 2)
+        x0, y0 = max(0, x - pad), max(0, y - pad)
+        x1, y1 = min(gray.shape[1], x + bw + pad), min(gray.shape[0], y + bh + pad)
+
+        patch = gray[y0:y1, x0:x1]
+        blurred = cv2.GaussianBlur(patch, (ksize, ksize), 0)
+        lap = cv2.Laplacian(blurred, cv2.CV_32F)
+
+        dx0, dy0 = x - x0, y - y0
+        lap_roi = lap[dy0:dy0 + bh, dx0:dx0 + bw]
+
+        valid_vals = lap_roi[mask_roi > 0]
+        if valid_vals.size == 0:
+            return 0.0
+        return float(valid_vals.std())
+
+    @staticmethod
+    def _roi_texture_std(gray: np.ndarray, bbox: BBox,
+                         mask_roi: np.ndarray, ksize: int = 5) -> float:
+        """Обертка для удобного вызова через кортеж bbox=(x, y, bw, bh)."""
+        x, y, bw, bh = bbox
+        return HazardDetector._compute_roi_texture(gray, x, y, bw, bh, mask_roi, ksize)
+
     def _passes_class_filters(self, cand: Dict, spec: HazardClassSpec) -> bool:
         """Единые цветовые/геометрические правила для класса."""
         if spec.name in ("VICTIM", "HUMAN") and \
@@ -246,7 +281,7 @@ class HazardDetector:
         )
 
     def _detect_class(self, frame_bgr: np.ndarray, hsv: np.ndarray,
-                      laplacian: np.ndarray, mask: np.ndarray,
+                      gray: np.ndarray, mask: np.ndarray,
                       claimed: np.ndarray, spec: HazardClassSpec,
                       width: int, height: int) -> List[Detection]:
         contours, _ = cv2.findContours(
@@ -287,8 +322,9 @@ class HazardDetector:
             hsv_pixels = hsv_roi[roi_mask > 0]
             mean_hsv = cv2.mean(hsv_roi, mask=roi_mask)[:3]
             hue_std = float(hsv_pixels[:, 0].std())
-            lap_roi = laplacian[y:y + bh, x:x + bw]
-            texture_std = float(lap_roi[roi_mask > 0].std())
+            texture_std = self._compute_roi_texture(
+                gray, x, y, bw, bh, roi_mask, self.config.texture_blur_ksize
+            )
             purity = self._color_purity(spec.name, mean_hsv)
             stripe_fraction = self._stripe_fraction(hsv_roi, roi_mask,
                                                     pixel_count)
@@ -321,7 +357,7 @@ class HazardDetector:
             if self._passes_class_filters(candidate, spec):
                 candidates.append(candidate)
 
-        candidates = self._merge_candidates(candidates, hsv, laplacian, mask,
+        candidates = self._merge_candidates(candidates, hsv, gray, mask,
                                             spec)
 
         # Сортируем по «весу» и оставляем не больше N пятен на класс.
@@ -359,7 +395,7 @@ class HazardDetector:
         return results
 
     def _merge_candidates(self, candidates: List[Dict], hsv: np.ndarray,
-                          laplacian: np.ndarray, mask: np.ndarray,
+                          gray: np.ndarray, mask: np.ndarray,
                           spec: HazardClassSpec) -> List[Dict]:
         """Склеить близкие пятна одного класса в один очаг."""
         if len(candidates) <= 1:
@@ -407,7 +443,9 @@ class HazardDetector:
             hsv_roi = hsv[y:y + bh, x:x + bw]
             hsv_pixels = hsv_roi[roi > 0]
             mean_hsv = cv2.mean(hsv_roi, mask=roi)[:3]
-            texture = float(laplacian[y:y + bh, x:x + bw][roi > 0].std())
+            texture = self._compute_roi_texture(
+                gray, x, y, bw, bh, roi, self.config.texture_blur_ksize
+            )
             hue_std = float(hsv_pixels[:, 0].std()) if len(hsv_pixels) else 0.0
             moments = cv2.moments(contour)
             if abs(moments["m00"]) > 1e-9:

@@ -107,41 +107,77 @@ class _StreamHandler(BaseHTTPRequestHandler):
 
 
 class LatestFrameStreamer:
-    """Потокобезопасный HTTP-сервер последнего JPEG-кадра."""
+    """Потокобезопасный HTTP-сервер последнего JPEG-кадра с ленивым on-demand кодированием."""
 
     def __init__(self, host: str = "0.0.0.0", port: int = 8080,
-                 quality: int = 80):
+                 quality: int = 80, start_server: bool = True):
         self.host = host
         self.port = int(port)
         self.quality = int(quality)
         self.running = True
-        self._frame: Optional[bytes] = None
+        self._raw_frame: Optional[np.ndarray] = None
+        self._encoded_frame: Optional[bytes] = None
+        self._frame_id: int = 0
+        self._cached_frame_id: int = -1
         self._lock = threading.Lock()
         self._state: dict = {}
 
-        handler = type("BoundStreamHandler", (_StreamHandler,),
-                       {"streamer": self})
-        self._server = ThreadingHTTPServer((self.host, self.port), handler)
-        self._thread = threading.Thread(target=self._server.serve_forever,
-                                        daemon=True)
-        self._thread.start()
+        self._server: Optional[ThreadingHTTPServer] = None
+        self._thread: Optional[threading.Thread] = None
+
+        if start_server:
+            handler = type("BoundStreamHandler", (_StreamHandler,),
+                           {"streamer": self})
+            self._server = ThreadingHTTPServer((self.host, self.port), handler)
+            self._thread = threading.Thread(target=self._server.serve_forever,
+                                            daemon=True)
+            self._thread.start()
+
+    @property
+    def _frame(self) -> Optional[bytes]:
+        """Обратная совместимость для интроспекции."""
+        with self._lock:
+            return self._encoded_frame
 
     def update(self, frame_bgr: np.ndarray) -> None:
-        """Закодировать и запомнить кадр (вызывается из ROS-колбэка)."""
+        """Запомнить кадр без немедленного кодирования в JPEG.
+
+        Вызывается из высокочастотного ROS-колбэка. Должен отрабатывать
+        за доли микросекунды (<0.01 мс) без вызова cv2.imencode.
+        """
         if frame_bgr is None or frame_bgr.size == 0:
             return
-        ok, encoded = cv2.imencode(
-            ".jpg", frame_bgr,
-            [int(cv2.IMWRITE_JPEG_QUALITY), self.quality],
-        )
-        if not ok:
-            return
         with self._lock:
-            self._frame = encoded.tobytes()
+            self._raw_frame = frame_bgr
+            self._frame_id += 1
 
     def snapshot(self) -> Optional[bytes]:
+        """Получить JPEG-представление последнего кадра.
+
+        Кодирует в JPEG 'на лету' только при реальном запросе и кэширует
+        результат для повторных запросов одного и того же кадра.
+        """
         with self._lock:
-            return self._frame
+            raw = self._raw_frame
+            fid = self._frame_id
+            cached_fid = self._cached_frame_id
+            cached_bytes = self._encoded_frame
+
+            if raw is None:
+                return None
+            if fid == cached_fid and cached_bytes is not None:
+                return cached_bytes
+
+            ok, encoded = cv2.imencode(
+                ".jpg", raw,
+                [int(cv2.IMWRITE_JPEG_QUALITY), self.quality],
+            )
+            if not ok:
+                return None
+            encoded_bytes = encoded.tobytes()
+            self._encoded_frame = encoded_bytes
+            self._cached_frame_id = fid
+            return encoded_bytes
 
     def set_state(self, state: dict) -> None:
         """Обновить телеметрию для АРМ (позиция БПЛА, скан, детекции)."""
@@ -157,7 +193,13 @@ class LatestFrameStreamer:
 
     def stop(self) -> None:
         self.running = False
-        try:
-            self._server.shutdown()
-        finally:
-            self._server.server_close()
+        if self._server is not None:
+            try:
+                self._server.shutdown()
+            finally:
+                self._server.server_close()
+                self._server = None
+        if self._thread is not None:
+            if self._thread.is_alive() and threading.current_thread() != self._thread:
+                self._thread.join(timeout=1.0)
+            self._thread = None
