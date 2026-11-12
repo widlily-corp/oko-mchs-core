@@ -448,9 +448,21 @@ class MchsScanPilot(Node):
     def _on_odom(self, message: Odometry) -> None:
         """Запоминает фактическую позицию из /mchs/odom (z не используется)."""
         position = message.pose.pose.position
+        orientation = message.pose.pose.orientation
+        values = (position.x, position.y, orientation.x, orientation.y,
+                  orientation.z, orientation.w)
+        if not all(math.isfinite(float(value)) for value in values):
+            self._warn("Пропущена некорректная одометрия: координаты или кватернион не finite")
+            return
+        quaternion_norm = math.sqrt(
+            float(orientation.x) ** 2 + float(orientation.y) ** 2
+            + float(orientation.z) ** 2 + float(orientation.w) ** 2
+        )
+        if quaternion_norm < 1e-9:
+            self._warn("Пропущена некорректная одометрия: нулевой кватернион")
+            return
         self.odom_x = float(position.x)
         self.odom_y = float(position.y)
-        orientation = message.pose.pose.orientation
         self.odom_yaw = math.atan2(
             2.0 * (orientation.w * orientation.z
                    + orientation.x * orientation.y),

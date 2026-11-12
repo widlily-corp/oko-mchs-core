@@ -1009,15 +1009,27 @@ def run_ros(args: argparse.Namespace) -> int:
         def on_odom(self, msg: Odometry) -> None:
             """Запоминает фактическую высоту, позицию, скорости и курс из Gazebo."""
             position = msg.pose.pose.position
+            twist = msg.twist.twist
+            ori = msg.pose.pose.orientation
+            values = (position.x, position.y, position.z, twist.linear.x,
+                      twist.linear.y, twist.linear.z, ori.x, ori.y, ori.z, ori.w)
+            if not all(math.isfinite(float(value)) for value in values):
+                self.get_logger().warning("Пропущена некорректная одометрия: координаты, скорости или кватернион не finite")
+                return
+            quaternion_norm = math.sqrt(
+                float(ori.x) ** 2 + float(ori.y) ** 2
+                + float(ori.z) ** 2 + float(ori.w) ** 2
+            )
+            if quaternion_norm < 1e-9:
+                self.get_logger().warning("Пропущена некорректная одометрия: нулевой кватернион")
+                return
             self.odom_altitude = float(position.z)
             self.odom_position = (float(position.x), float(position.y))
 
-            twist = msg.twist.twist
             self.odom_vx = float(twist.linear.x)
             self.odom_vy = float(twist.linear.y)
             self.odom_vz = float(twist.linear.z)
 
-            ori = msg.pose.pose.orientation
             siny = 2.0 * (ori.w * ori.z + ori.x * ori.y)
             cosy = 1.0 - 2.0 * (ori.y * ori.y + ori.z * ori.z)
             self.odom_yaw_deg = math.degrees(math.atan2(siny, cosy))
