@@ -6,7 +6,12 @@ set "REPO_UNC=%~dp0"
 set "REPO_UNC=%REPO_UNC:\=/%"
 cd /d "%TEMP%"
 for /f "usebackq delims=" %%I in (`wsl.exe -d Ubuntu-22.04 wslpath -u "%REPO_UNC%"`) do set "REPO_WSL=%%I"
-if not defined REPO_WSL set "REPO_WSL=/root/Rep/oko-mchs-core"
+if not defined REPO_WSL (
+    echo [ERROR] Failed to resolve repository path inside WSL.
+    echo         Check that WSL2 + Ubuntu-22.04 is installed and run this script from the repo.
+    popd
+    exit /b 1
+)
 
 echo ========================================================
 echo       KOMPLEKS OKO MCHS: UNIFIED SYSTEM LAUNCH

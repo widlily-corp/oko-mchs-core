@@ -1,7 +1,10 @@
 ﻿Set-Location $PSScriptRoot
 
 $RepoWsl = (& wsl.exe -d Ubuntu-22.04 wslpath -u ($PSScriptRoot -replace '\\','/') 2>$null | Out-String).Trim()
-if (-not $RepoWsl) { $RepoWsl = "/root/Rep/oko-mchs-core" }
+if (-not $RepoWsl) {
+    Write-Error "Не удалось определить путь к репозиторию в WSL. Проверьте WSL2 + Ubuntu-22.04."
+    exit 1
+}
 
 # wsl.exe не умеет стартовать из UNC-каталога — уходим в локальный TEMP.
 Set-Location $env:TEMP

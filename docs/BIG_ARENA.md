@@ -80,8 +80,8 @@ bash scripts/run_all.sh            # MCHS_NO_UI=1 — без автозапус�
 ```
 
 ```powershell
-# Windows
-python \\wsl.localhost\Ubuntu-22.04\root\Rep\oko-mchs-core\src\mchs_ui\app.py
+# Windows (из корня чекаута)
+python src\mchs_ui\app.py
 ```
 
 ## Проверено

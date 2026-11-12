@@ -26,10 +26,22 @@ from .logger import (
     reset_logging,
     set_log_dir,
 )
-from .video_reporter import (
-    MissionVideoReporter,
-    VideoReportConfig,
-)
+
+
+def __getattr__(name: str):
+    """Ленивый импорт видеорепортёра: бортовые ноды не должны требовать Pillow.
+
+    ``video_reporter`` тянет Pillow ради кириллицы в видеорапорте и раньше
+    импортировался сразу при ``import mchs_core``, из-за чего зрение, автопилот
+    и arena_controller падали на чистой WSL без Pillow. Теперь модуль
+    подгружается только при фактическом обращении к этим именам.
+    """
+    if name in ("MissionVideoReporter", "VideoReportConfig"):
+        from . import video_reporter
+
+        return getattr(video_reporter, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __version__ = "1.0.0"
 
