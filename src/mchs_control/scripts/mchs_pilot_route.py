@@ -598,7 +598,14 @@ class MchsScanPilot(Node):
         """Скорость к точке с торможением у цели (в мировых осях)."""
         if dist <= 1e-6:
             return
+        target_yaw = math.atan2(target_y - pos_y, target_x - pos_x)
+        yaw_error = math.atan2(math.sin(target_yaw - self.odom_yaw),
+                               math.cos(target_yaw - self.odom_yaw))
+        # Camera is fixed to the body: face the next leg before translating.
+        cmd.angular.z = max(-1.0, min(1.0, 2.0 * yaw_error))
         speed = min(self.mission.cruise_speed, max(1.0, dist * 2.0))
+        if abs(yaw_error) > math.radians(15.0):
+            speed = 0.0
         vx_world = speed * (target_x - pos_x) / dist
         vy_world = speed * (target_y - pos_y) / dist
         cmd.linear.x, cmd.linear.y = self._world_to_body(vx_world, vy_world)

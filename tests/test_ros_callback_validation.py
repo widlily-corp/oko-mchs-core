@@ -88,3 +88,26 @@ def test_streamer_socket_timeout_is_configured():
         assert b"503" in b"".join(chunks)
     finally:
         streamer.stop()
+
+
+@pytest.mark.parametrize("yaw,target,sign", [
+    (0.0, (0.0, 10.0), 1), (0.0, (0.0, -10.0), -1),
+    (math.pi - 0.1, (-10.0, -0.1), 1),
+])
+def test_route_turns_camera_toward_travel_direction(yaw, target, sign):
+    cmd = NS(linear=NS(x=0.0, y=0.0), angular=NS(z=0.0))
+    pilot = NS(odom_yaw=yaw, mission=NS(cruise_speed=12.0),
+               _world_to_body=lambda x, y: (x, y))
+    callback("src/mchs_control/scripts/mchs_pilot_route.py", "_steer")(
+        pilot, cmd, *target, math.hypot(*target), 0.0, 0.0)
+    assert cmd.angular.z * sign > 0
+    assert abs(cmd.angular.z) <= 1.0
+
+
+def test_route_aligned_camera_does_not_turn():
+    cmd = NS(linear=NS(x=0.0, y=0.0), angular=NS(z=0.0))
+    pilot = NS(odom_yaw=0.0, mission=NS(cruise_speed=12.0),
+               _world_to_body=lambda x, y: (x, y))
+    callback("src/mchs_control/scripts/mchs_pilot_route.py", "_steer")(
+        pilot, cmd, 10.0, 0.0, 10.0, 0.0, 0.0)
+    assert cmd.angular.z == 0.0
