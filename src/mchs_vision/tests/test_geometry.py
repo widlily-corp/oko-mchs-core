@@ -90,3 +90,9 @@ def test_threat_level_boundaries():
     assert threat_level(15.0) == "WARNING"
     assert threat_level(50.0) == "WARNING"
     assert threat_level(50.01) == "CRITICAL"
+
+
+def test_invalid_nan_inputs_do_not_create_coordinates(nadir_projector):
+    pose = Pose(z_m=38.14)
+    assert nadir_projector.pixel_to_ground(float("nan"), 240, pose) is None
+    assert nadir_projector.pixel_to_ground(320, 240, Pose(z_m=float("nan"))) is None

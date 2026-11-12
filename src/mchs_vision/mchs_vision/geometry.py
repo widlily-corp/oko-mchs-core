@@ -127,7 +127,16 @@ class GroundProjector:
         Возвращает (x, y) в метрах или None, если луч уходит выше горизонта,
         пересечение за спиной/слишком далеко.
         """
+        try:
+            values = (float(u), float(v), float(pose.x_m), float(pose.y_m),
+                      float(pose.z_m), float(pose.yaw_rad))
+        except (TypeError, ValueError):
+            return None
+        if not all(math.isfinite(value) for value in values):
+            return None
         origin, direction = self.pixel_ray(u, v, pose)
+        if not np.all(np.isfinite(direction)) or not np.all(np.isfinite(origin)):
+            return None
         if direction[2] >= -1e-4:
             return None  # луч параллелен земле или смотрит в небо
 
