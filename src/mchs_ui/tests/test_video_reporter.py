@@ -170,3 +170,18 @@ def test_incident_shot_has_caption_bar():
     })
     assert frame.shape == (360, 640, 3)
     assert int(frame[-4:, :, :].max()) < 60, "нижняя плашка не отрисована"
+
+
+def test_person_caption_is_plain_russian_and_not_area(monkeypatch):
+    reporter = MissionVideoReporter(VideoReportConfig(width=640, height=360))
+    texts = []
+    def capture(frame, items):
+        texts.extend(item[0] for item in items)
+        return frame
+    monkeypatch.setattr(reporter, "_draw_texts", capture)
+    reporter._render_incident_shot({"label": "VICTIM", "threat_level": "CRITICAL",
+                                    "area": 1.8, "frame": create_sample_frame("person")})
+    caption = " ".join(texts)
+    assert "ЧЕЛОВЕК" in caption and "КРИТИЧЕСКАЯ УГРОЗА" in caption
+    assert "состояние не подтверждено" in caption
+    assert "м²" not in caption

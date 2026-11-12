@@ -228,7 +228,7 @@ class MissionVideoReporter:
                           (200, 220, 240), False, max_w))
             y_offset += row_step
 
-        items.append(("МАТЕРИАЛЫ ПЕРЕДАНЫ В ОПЕРАТИВНЫЙ ШТАБ ЦУКС МЧС РОССИИ",
+        items.append(("МАТЕРИАЛЫ СФОРМИРОВАНЫ ДЛЯ ПЕРЕДАЧИ В ЦУКС",
                       x0, h - pad - fs(24) - max(4, int(8 * scale)), fs(24),
                       (0, 210, 255), True, max_w))
         return self._draw_texts(frame, items)
@@ -257,13 +257,22 @@ class MissionVideoReporter:
         threat = str(shot.get("threat_level") or "ЧС").upper()
         color = (0, 60, 255) if threat == "CRITICAL" else (0, 170, 255)
         label = shot.get("label") or shot.get("hazard_type") or "ЧС"
+        labels = {"VICTIM": "ЧЕЛОВЕК — ТРЕБУЕТСЯ ПРОВЕРКА", "HUMAN": "ЧЕЛОВЕК — ТРЕБУЕТСЯ ПРОВЕРКА",
+                  "FIRE": "ПОЖАР", "SMOKE": "ЗАДЫМЛЕНИЕ", "OIL": "РАЗЛИВ НЕФТИ",
+                  "FLOOD": "ЗАТОПЛЕНИЕ", "WASTE": "СВАЛКА"}
+        label = labels.get(str(label).upper(), label)
+        threat = {"CRITICAL": "КРИТИЧЕСКАЯ УГРОЗА", "WARNING": "ВНИМАНИЕ",
+                  "ADVISORY": "НАБЛЮДЕНИЕ"}.get(threat, threat)
         title = f"ФОТОФИКСАЦИЯ: {label} [{threat}]"
         parts = []
         if shot.get("area") is not None:
             try:
                 area = float(shot["area"])
-                parts.append(f"{area:.0f} м²" if area >= 10.0
-                             else f"{area:.1f} м²")
+                if str(shot.get("hazard_type") or shot.get("label") or "").upper() in ("VICTIM", "HUMAN"):
+                    parts.append("Обнаружен человек; состояние не подтверждено")
+                else:
+                    parts.append(f"{area:.0f} м²" if area >= 10.0
+                                 else f"{area:.1f} м²")
             except (TypeError, ValueError):
                 pass
         if shot.get("x") is not None and shot.get("y") is not None:
@@ -324,7 +333,7 @@ class MissionVideoReporter:
 
             # 3. Кадры фотофиксации очагов (то, что реально видел борт)
             if shots:
-                shot_hold = max(1, int(fps * 2.0))
+                shot_hold = max(1, int(fps * 4.0))
                 for shot in shots:
                     shot_frame = self._render_incident_shot(shot)
                     for _ in range(shot_hold):
