@@ -7,19 +7,6 @@ import pytest
 import app as ui
 
 
-def test_failed_replace_keeps_existing_hazards(tmp_path, monkeypatch):
-    path = tmp_path / "hazards.json"
-    original = '{"FIRE": {"x": 1, "y": 2}, "vendor": "keep"}'
-    path.write_text(original)
-    def locked(*args):
-        raise PermissionError("Windows reader holds destination")
-    monkeypatch.setattr(ui.os, "replace", locked)
-    with pytest.raises(OSError):
-        ui.save_hazards({"FIRE": {"x": 9, "y": 8}}, path)
-    assert path.read_text() == original
-    assert list(tmp_path.iterdir()) == [path]
-
-
 def test_save_preserves_unknown_fields(tmp_path):
     path = tmp_path / "hazards.json"
     original = {"_comment": "user", "schema_extra": [1, 2],
@@ -44,3 +31,20 @@ def test_concurrent_writers_publish_complete_json(tmp_path):
     with ThreadPoolExecutor(max_workers=8) as pool:
         list(pool.map(write, range(80)))
     assert list(tmp_path.iterdir()) == [path]
+
+import json
+import pytest
+import app as ui
+
+
+def test_replace_failure_keeps_existing_config_and_propagates(tmp_path, monkeypatch):
+    path = tmp_path / "hazards.json"
+    original = {"FIRE": {"x": 1, "y": 2}}
+    path.write_text(json.dumps(original))
+    def locked(*args):
+        raise PermissionError("destination locked")
+    monkeypatch.setattr(ui.os, "replace", locked)
+    with pytest.raises(PermissionError):
+        ui.save_hazards({"FIRE": {"x": 9}}, path)
+    assert json.loads(path.read_text()) == original
+    assert [item.name for item in tmp_path.iterdir()] == ["hazards.json"]
