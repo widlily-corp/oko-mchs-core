@@ -1269,9 +1269,13 @@ class OkoMchsApp(ctk.CTk):
 
         self.lbl_incident_response = ctk.CTkLabel(
             card, text="", font=ctk.CTkFont(FONT_UI, 11), text_color=COLORS["warn"],
-            anchor="w", justify="left", wraplength=420,
+            anchor="w", justify="left", wraplength=320,
         )
         self.lbl_incident_response.pack(fill="x", padx=14, pady=(0, 6))
+        # Ширина карточки меняется вместе с окном: перенос строк обязан
+        # следовать за ней, иначе рекомендация по наряду обрезается по краю.
+        card.bind("<Configure>", lambda event: self.lbl_incident_response.configure(
+            wraplength=max(180, event.width - 44)))
 
         buttons = ctk.CTkFrame(card, fg_color="transparent")
         buttons.pack(fill="x", padx=14, pady=(0, 12), side="bottom")
@@ -2523,7 +2527,8 @@ class OkoMchsApp(ctk.CTk):
                 canvas.create_oval(px - r_i, py - r_i, px + r_i, py + r_i, outline=ripple_color, width=2 if phase_i < 0.5 else 1)
 
             canvas.create_oval(px - 14, py - 14, px + 14, py + 14, fill=ripple_color, outline="#FFFFFF", width=2)
-            canvas.create_text(px, py - 38, text=self.protocol["incident_id"], fill=ripple_color,
+            label_y = py - 38 if py - 38 > top + 10 else py + 32
+            canvas.create_text(px, label_y, text=self.protocol["incident_id"], fill=ripple_color,
                                font=(FONT_MONO, 9, "bold"))
 
         # Трек
