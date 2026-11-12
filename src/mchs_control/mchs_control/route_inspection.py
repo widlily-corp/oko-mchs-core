@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import math
 from typing import Optional
 
 #: Топик событий ЧС от бортовой ноды зрения.
@@ -21,6 +22,126 @@ INSPECTION_COOLDOWN_S = 5.0
 
 #: Порог потери телеметрии, после которого автопилот сам уходит в RTL, с.
 LINK_LOSS_RTL_S = 15.0
+
+#: Дистанция, с которой очаг снимается «крупным планом» (камера 45°), м.
+INSPECTION_STANDOFF_M = 12.0
+#: Радиус прибытия в точку съёмки, м.
+INSPECTION_ARRIVE_M = 2.5
+#: Скорость подлёта к точке съёмки, м/с.
+INSPECTION_SPEED_MPS = 6.0
+#: Коэффициент и предел скорости доворота на очаг, 1/с и рад/с.
+YAW_GAIN = 1.4
+MAX_YAW_RATE = 0.9
+
+
+def wrap_angle(rad: float) -> float:
+    """Приводит угол к диапазону (-pi, pi]."""
+    return (float(rad) + math.pi) % (2.0 * math.pi) - math.pi
+
+
+def clamp(value: float, low: float, high: float) -> float:
+    """Ограничивает значение отрезком [low, high]."""
+    return max(low, min(high, float(value)))
+
+
+class InspectionManeuver:
+    """Подлёт к очагу, доворот камеры на цель и съёмка с ближней дистанции.
+
+    Камера БПЛА закреплена под 45° вниз, поэтому «крупный план» — это не
+    полёт строго над очагом (там он уходит из кадра), а точка на расстоянии
+    ``standoff_m`` от цели: дрон разворачивается на очаг и висит, пока
+    бортовая нода фиксирует фото-улику.
+
+    Класс не зависит от ROS и тестируется отдельно от Gazebo.
+    """
+
+    def __init__(self, standoff_m: float = INSPECTION_STANDOFF_M,
+                 arrive_m: float = INSPECTION_ARRIVE_M,
+                 speed_mps: float = INSPECTION_SPEED_MPS) -> None:
+        self.standoff_m = float(standoff_m)
+        self.arrive_m = float(arrive_m)
+        self.speed_mps = float(speed_mps)
+        self.active = False
+        self.phase = "IDLE"  # IDLE | APPROACH | HOLD
+        self.hazard = (0.0, 0.0)
+        self.target = (0.0, 0.0)
+        self.hold_s = 0.0
+        self.label = ""
+        self._hold_started = 0.0
+
+    def start(self, hazard_x: float, hazard_y: float,
+              drone_x: float, drone_y: float, hold_s: float,
+              label: str = "") -> None:
+        """Начинает инспекцию очага в точке (hazard_x, hazard_y)."""
+        self.hazard = (float(hazard_x), float(hazard_y))
+        dx = float(drone_x) - self.hazard[0]
+        dy = float(drone_y) - self.hazard[1]
+        dist = math.hypot(dx, dy)
+        if dist < 1e-6:
+            # Очаг ровно под дроном: отходим по направлению на север.
+            ux, uy = 0.0, 1.0
+        else:
+            ux, uy = dx / dist, dy / dist
+        self.target = (
+            self.hazard[0] + ux * self.standoff_m,
+            self.hazard[1] + uy * self.standoff_m,
+        )
+        self.hold_s = max(0.0, float(hold_s))
+        self.label = str(label or "")
+        self.phase = "APPROACH"
+        self.active = True
+        self._hold_started = 0.0
+
+    def stop(self) -> None:
+        """Прерывает инспекцию (например, при потере канала)."""
+        self.active = False
+        self.phase = "IDLE"
+
+    def command(self, now: float, drone_x: float, drone_y: float,
+                yaw_rad: float) -> dict:
+        """Возвращает уставку движения на текущем такте.
+
+        ``vx``/``vy`` — в мировой системе (X — восток, Y — север),
+        ``yaw_rate`` — скорость доворота, рад/с.
+        """
+        if not self.active:
+            return {"active": False, "phase": self.phase, "vx": 0.0,
+                    "vy": 0.0, "yaw_rate": 0.0, "done": False}
+
+        error = wrap_angle(
+            math.atan2(self.hazard[1] - drone_y, self.hazard[0] - drone_x)
+            - float(yaw_rad)
+        )
+        yaw_rate = clamp(YAW_GAIN * error, -MAX_YAW_RATE, MAX_YAW_RATE)
+
+        if self.phase == "APPROACH":
+            tx, ty = self.target
+            dist = math.hypot(tx - drone_x, ty - drone_y)
+            if dist <= self.arrive_m:
+                self.phase = "HOLD"
+                self._hold_started = now
+                return {"active": True, "phase": "HOLD", "vx": 0.0, "vy": 0.0,
+                        "yaw_rate": yaw_rate, "done": False}
+            speed = min(self.speed_mps, max(1.0, dist * 1.2))
+            return {"active": True, "phase": "APPROACH",
+                    "vx": (tx - drone_x) / dist * speed,
+                    "vy": (ty - drone_y) / dist * speed,
+                    "yaw_rate": yaw_rate, "done": False}
+
+        # HOLD: висим и держим очаг в кадре до конца съёмки.
+        if now - self._hold_started >= self.hold_s:
+            self.active = False
+            self.phase = "IDLE"
+            return {"active": False, "phase": "IDLE", "vx": 0.0, "vy": 0.0,
+                    "yaw_rate": 0.0, "done": True}
+        return {"active": True, "phase": "HOLD", "vx": 0.0, "vy": 0.0,
+                "yaw_rate": yaw_rate, "done": False}
+
+    def remaining_s(self, now: float) -> float:
+        """Сколько секунд съёмки осталось (0 — если идёт подлёт)."""
+        if not self.active or self.phase != "HOLD":
+            return 0.0
+        return max(0.0, self.hold_s - (now - self._hold_started))
 
 
 def link_loss_needs_rtl(have_odom: bool, odom_age_s: float, mode: str,

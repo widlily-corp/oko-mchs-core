@@ -126,3 +126,47 @@ def test_report_includes_every_flight_frame():
         cap.release()
         # титул 2 с + 3 кадра по 1 с + сводка 2 с = 70 кадров при 10 fps
         assert count >= 65, f"кадры полёта потерялись: {count} кадров"
+
+
+def test_report_includes_incident_shots():
+    """Кадр фотофиксации очага попадает в ролик отдельной вставкой."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        reporter = MissionVideoReporter(VideoReportConfig(width=640, height=360,
+                                                          fps=10.0))
+        shot = {
+            "frame": create_sample_frame("FLOOD", color=(200, 120, 20)),
+            "label": "Зона затопления",
+            "threat_level": "CRITICAL",
+            "area": 221.0,
+            "x": -26.3,
+            "y": 65.1,
+            "time": "08:55:08",
+        }
+        path = reporter.compile_report(
+            frames=[create_sample_frame("ПАТРУЛЬ")],
+            stats={"статус": "ТЕСТ"},
+            output_path=os.path.join(tmp_dir, "shots.mp4"),
+            shots=[shot],
+        )
+        cap = cv2.VideoCapture(path)
+        count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        cap.release()
+        # титул 2 с + кадр 1 с + фотофиксация 2 с + сводка 2 с = 70 кадров
+        assert count >= 65, f"вставка фотофиксации потерялась: {count}"
+
+
+def test_incident_shot_has_caption_bar():
+    """Под кадром инцидента есть тёмная плашка с координатами."""
+    reporter = MissionVideoReporter(VideoReportConfig(width=640, height=360,
+                                                      fps=10.0))
+    frame = reporter._render_incident_shot({
+        "frame": create_sample_frame("FLOOD"),
+        "label": "Зона затопления",
+        "threat_level": "CRITICAL",
+        "area": 221.0,
+        "x": -26.3,
+        "y": 65.1,
+        "time": "08:55:08",
+    })
+    assert frame.shape == (360, 640, 3)
+    assert int(frame[-4:, :, :].max()) < 60, "нижняя плашка не отрисована"

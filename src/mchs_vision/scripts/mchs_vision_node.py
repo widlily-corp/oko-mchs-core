@@ -424,13 +424,17 @@ class MchsVisionNode(Node):
         }
         self.streamer.set_state(state)
 
-    def _save_incident_photo(self, event: dict, frame) -> None:
-        """Сохраняет кадр с HUD как фотодоказательство очага."""
+    def _save_incident_photo(self, event: dict, frame) -> str:
+        """Сохраняет кадр с HUD как фотодоказательство очага.
+
+        Возвращает относительный путь к файлу (``reports/incidents/...``)
+        или пустую строку, если снимок не сделан.
+        """
         if not self.save_incident_photos or frame is None:
-            return
+            return ""
         now = time.time()
         if now - self._last_photo_time < 4.0:
-            return
+            return ""
         try:
             stamp = datetime.now().strftime("%H%M%S")
             hazard_type = str(event.get("hazard_type") or "INC").upper()
@@ -462,15 +466,17 @@ class MchsVisionNode(Node):
                 name = f"{incident_id}_{stamp}.jpg"
                 path = os.path.join(self.incidents_dir, name)
                 if not cv2.imwrite(path, frame):
-                    return
+                    return ""
             self._last_photo = f"reports/incidents/{name}"
             self._last_photo_time = now
             self._photo_count += 1
             if self.logger:
                 self.logger.info(f"Фото очага сохранено: {path}")
+            return self._last_photo
         except Exception as exc:  # noqa: BLE001 - не роняем полёт из-за фото
             if self.logger:
                 self.logger.warning(f"Не удалось сохранить фото очага: {exc}")
+        return ""
 
     def _match_hazard(self, event: dict):
         """Ищет ближайший очаг из config/hazards.json к событию детекции."""
@@ -557,6 +563,7 @@ class MchsVisionNode(Node):
                 "protocol_version": "3.0",
                 "source": "VISION",
                 "distance_to_hazard_m": round(dist, 1),
+                "photo": self._last_photo or "",
             }
         }
         path = os.path.join(self.reports_dir, "incident_protocol.json")
@@ -650,16 +657,22 @@ class MchsVisionNode(Node):
                     or abs(event_y) > self.arena_half_size_m):
                 # Координата вне арены — артефакт дальней кромки/фона.
                 continue
+            is_new = self._log_event(event)
+            if log_event is not None:
+                lvl = "ERROR" if event.get("threat_level") == "CRITICAL" else "WARNING"
+                log_event("VISION", "HAZARD_DETECTED", event, level=lvl)
+            if is_new and should_save_evidence(event):
+                # Фото-улика снимается до публикации события: АРМ получает
+                # точный путь к кадру этого очага, а не «последнее фото».
+                photo_path = self._save_incident_photo(event, result.annotated)
+                if photo_path:
+                    event["photo"] = photo_path
             try:
                 self.event_publisher.publish(
                     String(data=json.dumps(event, ensure_ascii=False))
                 )
             except Exception:  # noqa: BLE001 - гонка с остановкой ноды
                 return
-            is_new = self._log_event(event)
-            if log_event is not None:
-                lvl = "ERROR" if event.get("threat_level") == "CRITICAL" else "WARNING"
-                log_event("VISION", "HAZARD_DETECTED", event, level=lvl)
             if is_new:
                 self._last_event = {
                     "incident_id": event.get("incident_id"),
@@ -668,16 +681,15 @@ class MchsVisionNode(Node):
                     "area_sq_m": event.get("area_sq_m"),
                     "x": geo.get("abs_x"),
                     "y": geo.get("abs_y"),
+                    "photo": event.get("photo") or "",
                     "ts": datetime.now().strftime("%H:%M:%S"),
                 }
                 self._last_event_at = time.time()
                 hazard_class = str(event.get("hazard_type") or "CHS")
                 self._incident_counts[hazard_class] = (
                     self._incident_counts.get(hazard_class, 0) + 1)
-                if should_save_evidence(event):
-                    # Фотофиксация не зависит от радиуса config/hazards.json:
-                    # очаг могли переместить прямо во время миссии.
-                    self._save_incident_photo(event, result.annotated)
+                # Фотофиксация уже сделана выше (до публикации события),
+                # чтобы путь к снимку ушёл в АРМ вместе с событием.
             self._maybe_write_protocol(event)
 
         if self.streamer is not None:

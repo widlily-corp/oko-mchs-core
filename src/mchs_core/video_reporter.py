@@ -3,7 +3,9 @@
 Модуль создаёт готовый видеоролик MP4/AVI с каскадной защитой от сбоев кодеков:
 1. Вступительная тактическая заставка (Title Card) с логотипом МЧС, номером борта и временем.
 2. Последовательность ключевых кадров миссии и тактических съёмок с бортовой камеры.
-3. Карточки обнаруженных инцидентов (очаг пожара, пострадавший, разлив нефти).
+3. Кадры фотофиксации обнаруженных инцидентов (очаг пожара, пострадавший,
+   разлив нефти) с подписью координат, площади и времени.
+4. Текстовые карточки инцидентов, если готовых кадров нет.
 4. Итоговая сводка миссии (длительность, площадь, найденные угрозы).
 """
 
@@ -231,14 +233,72 @@ class MissionVideoReporter:
                       (0, 210, 255), True, max_w))
         return self._draw_texts(frame, items)
 
+    def _render_incident_shot(self, shot: Dict) -> np.ndarray:
+        """Кадр фотофиксации: снимок с борта + тактическая подпись снизу."""
+        w, h = self.config.width, self.config.height
+        scale = min(w / 1280.0, h / 720.0)
+        fs = lambda value: max(10, int(value * scale))  # noqa: E731
+        frame = shot.get("frame")
+        canvas = np.full((h, w, 3), (10, 13, 18), dtype=np.uint8)
+        if frame is not None and getattr(frame, "size", 0):
+            src_h, src_w = frame.shape[:2]
+            factor = min(w / float(src_w), h / float(src_h))
+            new_w = max(1, int(src_w * factor))
+            new_h = max(1, int(src_h * factor))
+            resized = cv2.resize(frame, (new_w, new_h))
+            x_off = (w - new_w) // 2
+            y_off = (h - new_h) // 2
+            canvas[y_off:y_off + new_h, x_off:x_off + new_w] = resized
+
+        bar_h = max(44, int(82 * scale))
+        cv2.rectangle(canvas, (0, h - bar_h), (w, h), (12, 16, 22), -1)
+        cv2.line(canvas, (0, h - bar_h), (w, h - bar_h), (0, 120, 255), 2)
+
+        threat = str(shot.get("threat_level") or "ЧС").upper()
+        color = (0, 60, 255) if threat == "CRITICAL" else (0, 170, 255)
+        label = shot.get("label") or shot.get("hazard_type") or "ЧС"
+        title = f"ФОТОФИКСАЦИЯ: {label} [{threat}]"
+        parts = []
+        if shot.get("area") is not None:
+            try:
+                area = float(shot["area"])
+                parts.append(f"{area:.0f} м²" if area >= 10.0
+                             else f"{area:.1f} м²")
+            except (TypeError, ValueError):
+                pass
+        if shot.get("x") is not None and shot.get("y") is not None:
+            try:
+                parts.append(f"X={float(shot['x']):.1f} Y={float(shot['y']):.1f} м")
+            except (TypeError, ValueError):
+                pass
+        if shot.get("time"):
+            parts.append(str(shot["time"]))
+        meta = "  •  ".join(parts)
+
+        x0 = max(12, int(24 * scale))
+        max_w = w - 2 * x0
+        title_y = h - bar_h + max(3, int(8 * scale))
+        items = [(title, x0, title_y, fs(26), color, True, max_w)]
+        if meta:
+            items.append((meta, x0, title_y + fs(26) + max(2, int(6 * scale)),
+                          fs(22), (220, 230, 240), False, max_w))
+        return self._draw_texts(canvas, items)
+
     def compile_report(
         self,
         frames: List[np.ndarray],
         incidents: Optional[List[Dict]] = None,
         stats: Optional[Dict] = None,
         output_path: str = "reports/video/mission_summary.mp4",
+        shots: Optional[List[Dict]] = None,
     ) -> str:
-        """Компилирует сквозной видеорапорт."""
+        """Компилирует сквозной видеорапорт.
+
+        ``shots`` — кадры фотофиксации очагов: словари с ключами ``frame``
+        (кадр BGR), ``label``/``hazard_type``, ``threat_level``, ``area``,
+        ``x``, ``y``, ``time``. Каждый показывается отдельно с подписью, чтобы
+        зритель видел именно то, что обнаружил борт, а не только текст.
+        """
         writer, final_path = self._create_writer(output_path)
         w, h, fps = self.config.width, self.config.height, self.config.fps
 
@@ -262,7 +322,15 @@ class MissionVideoReporter:
                 for _ in range(frame_hold):
                     writer.write(resized)
 
-            # 3. Карточки инцидентов (если переданы)
+            # 3. Кадры фотофиксации очагов (то, что реально видел борт)
+            if shots:
+                shot_hold = max(1, int(fps * 2.0))
+                for shot in shots:
+                    shot_frame = self._render_incident_shot(shot)
+                    for _ in range(shot_hold):
+                        writer.write(shot_frame)
+
+            # 4. Текстовые карточки инцидентов (если переданы)
             if incidents:
                 card_scale = min(w / 1280.0, h / 720.0)
                 cx0 = max(12, int(90 * card_scale))
@@ -288,7 +356,7 @@ class MissionVideoReporter:
                     for _ in range(card_hold):
                         writer.write(card)
 
-            # 4. Финальная сводка (2.0 секунды)
+            # 5. Финальная сводка (2.0 секунды)
             stats_dict = stats or {
                 "статус": "ПАТРУЛИРОВАНИЕ ЗАВЕРШЕНО",
                 "обнаружено_инцидентов": len(incidents) if incidents else 0,

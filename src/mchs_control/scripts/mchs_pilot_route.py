@@ -27,7 +27,7 @@ JSON статуса (раз в 1 с)::
 
     {"row": k, "rows_total": N, "progress": 0.0..1.0,
      "phase": "ОЖИДАНИЕ ОДОМЕТРИИ" | "ВЫХОД В ЗОНУ" | "СКАНИРОВАНИЕ" |
-              "НАБЛЮДЕНИЕ" | "ВОЗВРАТ НА БАЗУ" | "ОЖИДАНИЕ",
+              "ИНСПЕКЦИЯ ОЧАГА" | "ВОЗВРАТ НА БАЗУ" | "ОЖИДАНИЕ",
      "x": .., "y": .., "target_x": .., "target_y": .., "ts": ..}
 
 ``row`` — номер текущего ряда, нумерация с 1 (``1..rows_total``).
@@ -83,6 +83,7 @@ from mchs_control.route_inspection import (  # noqa: E402
     INSPECTION_COOLDOWN_S,
     LINK_LOSS_RTL_S,
     InspectionController,
+    InspectionManeuver,
     link_loss_needs_rtl,
     parse_detection_event,
 )
@@ -131,7 +132,7 @@ PHASE_OUTBOUND = "ВЫХОД В ЗОНУ"
 PHASE_SCAN = "СКАНИРОВАНИЕ"
 PHASE_RTL = "ВОЗВРАТ НА БАЗУ"
 PHASE_WAIT = "ОЖИДАНИЕ"
-PHASE_HOVER = "НАБЛЮДЕНИЕ"
+PHASE_INSPECT = "ИНСПЕКЦИЯ ОЧАГА"
 
 # Периоды (с).
 CONTROL_PERIOD_S = 0.1
@@ -381,9 +382,13 @@ class MchsScanPilot(Node):
         self.target_y = self.waypoints[0]["y"]
         self.odom_warned = False
 
-        # Зависание над очагом по тревоге зрения (WARNING 5 с / CRITICAL 10 с).
+        # Инспекция очага по тревоге зрения: подлёт, доворот камеры, съёмка.
         self.inspector = InspectionController()
-        self.hovering = False
+        self.maneuver = InspectionManeuver()
+        self.inspecting = False
+        self.odom_yaw = 0.0
+        self._world_vx = 0.0
+        self._world_vy = 0.0
 
         # Таймеры логирования/статуса/команд.
         self.start_time = time.monotonic()
@@ -445,6 +450,12 @@ class MchsScanPilot(Node):
         position = message.pose.pose.position
         self.odom_x = float(position.x)
         self.odom_y = float(position.y)
+        orientation = message.pose.pose.orientation
+        self.odom_yaw = math.atan2(
+            2.0 * (orientation.w * orientation.z
+                   + orientation.x * orientation.y),
+            1.0 - 2.0 * (orientation.y ** 2 + orientation.z ** 2),
+        )
         self.have_odom = True
         self.last_odom_time = time.monotonic()
         # резервная оценка стартует с последней фактической точки
@@ -463,7 +474,7 @@ class MchsScanPilot(Node):
     # -- события зрения -----------------------------------------------------
 
     def _on_detection(self, message: String) -> None:
-        # Тревога зрения: зависаем над очагом для детальной съёмки.
+        # Тревога зрения: подлёт к очагу, доворот камеры и съёмка крупным планом.
         event = parse_detection_event(message.data)
         if event is None:
             return
@@ -472,13 +483,24 @@ class MchsScanPilot(Node):
         now = time.monotonic()
         if not self.inspector.on_event(event, now):
             return
+        hazard_x = event.get("x")
+        hazard_y = event.get("y")
+        if hazard_x is None or hazard_y is None:
+            hazard_x, hazard_y = self.target_x, self.target_y
+        hold_s = self.inspector.duration_for(event.get("threat_level"))
+        pos_x, pos_y = self._position(now)
+        self.maneuver.start(float(hazard_x), float(hazard_y), pos_x, pos_y,
+                            hold_s=hold_s,
+                            label=str(event.get("hazard_label_ru")
+                                      or event.get("hazard_type") or "ЧС"))
+        self.target_x, self.target_y = float(hazard_x), float(hazard_y)
         self._log(
-            "[ТРЕВОГА] %s %s: зависание %.0f с для детальной съёмки и протокола ЦУКС"
-            % (
-                event.get("hazard_type") or "ЧС",
-                event.get("threat_level") or "",
-                self.inspector.duration_for(event.get("threat_level")),
-            )
+            "[ТРЕВОГА] %s %s: подлёт к очагу и съёмка %.0f с "
+            "(дистанция %.0f м, X=%.1f Y=%.1f)"
+            % (event.get("hazard_type") or "ЧС",
+               event.get("threat_level") or "",
+               hold_s, self.maneuver.standoff_m,
+               float(hazard_x), float(hazard_y))
         )
 
     # -- команды оператора --------------------------------------------------
@@ -509,6 +531,8 @@ class MchsScanPilot(Node):
             if self.mode != "RTL":
                 self.mode = "RTL"
                 self.rtl_arrived = False
+                self.maneuver.stop()
+                self.inspecting = False
                 self._log("[КОМАНДА] Оператор: возврат на базу (RTL), сканирование приостановлено")
             return
         if command == "scan":
@@ -527,8 +551,8 @@ class MchsScanPilot(Node):
     def _phase(self) -> str:
         if not self.have_odom:
             return PHASE_WAIT_ODOM
-        if self.hovering:
-            return PHASE_HOVER
+        if self.inspecting:
+            return PHASE_INSPECT
         if self.mode == "RTL":
             return PHASE_RTL if not self.rtl_arrived else PHASE_WAIT
         if self.mode == "OUTBOUND":
@@ -545,13 +569,27 @@ class MchsScanPilot(Node):
             return 0.0
         return min(1.0, self.wp_index / float(len(self.waypoints)))
 
+    def _world_to_body(self, vx_world: float, vy_world: float) -> tuple[float, float]:
+        """Мировая скорость → система корпуса.
+
+        Плагин ``libgazebo_ros_planar_move`` трактует ``cmd_vel`` в системе
+        корпуса, поэтому после доворота камеры на очаг мировые компоненты
+        скорости нужно повернуть на текущий курс.
+        """
+        cos_yaw = math.cos(self.odom_yaw)
+        sin_yaw = math.sin(self.odom_yaw)
+        self._world_vx, self._world_vy = float(vx_world), float(vy_world)
+        return (cos_yaw * vx_world + sin_yaw * vy_world,
+                -sin_yaw * vx_world + cos_yaw * vy_world)
+
     def _steer(self, cmd: Twist, target_x: float, target_y: float, dist: float, pos_x: float, pos_y: float) -> None:
-        """Скорость к точке с торможением у цели (модель кинематическая, без ротации)."""
+        """Скорость к точке с торможением у цели (в мировых осях)."""
         if dist <= 1e-6:
             return
         speed = min(self.mission.cruise_speed, max(1.0, dist * 2.0))
-        cmd.linear.x = speed * (target_x - pos_x) / dist
-        cmd.linear.y = speed * (target_y - pos_y) / dist
+        vx_world = speed * (target_x - pos_x) / dist
+        vy_world = speed * (target_y - pos_y) / dist
+        cmd.linear.x, cmd.linear.y = self._world_to_body(vx_world, vy_world)
 
     def _advance_waypoint(self, pos_x: float, pos_y: float) -> tuple[float, float, float]:
         """Переходит к следующей точке, если текущая достигнута. Возвращает (tx, ty, dist)."""
@@ -597,6 +635,8 @@ class MchsScanPilot(Node):
             self.mode = "RTL"
             self.rtl_arrived = False
             self.inspector.cancel()
+            self.maneuver.stop()
+            self.inspecting = False
             self._warn(
                 "[СВЯЗЬ] Телеметрия не поступает > %.0f с — автономный RTL "
                 "по счислению" % LINK_LOSS_RTL_S
@@ -604,12 +644,22 @@ class MchsScanPilot(Node):
 
         pos_x, pos_y = self._position(now)
         cmd = Twist()
+        self._world_vx = 0.0
+        self._world_vy = 0.0
 
-        # Зависание над очагом: горизонтальная скорость нулевая, маршрут не
-        # продвигается, цель остаётся на очаге до конца инспекции.
-        self.hovering = self.inspector.is_active(now)
-        if self.hovering:
-            pass
+        # Инспекция очага: подлёт, доворот камеры и съёмка. Маршрут в это
+        # время не продвигается — цель остаётся на очаге.
+        inspection = self.maneuver.command(now, pos_x, pos_y, self.odom_yaw)
+        self.inspecting = bool(inspection.get("active"))
+        if inspection.get("done"):
+            self._log("[ИНСПЕКЦИЯ] Съёмка очага завершена, продолжаю маршрут")
+
+        if self.inspecting:
+            cmd.linear.x, cmd.linear.y = self._world_to_body(
+                float(inspection.get("vx") or 0.0),
+                float(inspection.get("vy") or 0.0),
+            )
+            cmd.angular.z = float(inspection.get("yaw_rate") or 0.0)
         elif not self.have_odom:
             # До первой одометрии не двигаемся: кинематический плагин без
             # обратной связи улетел бы вслепую.
@@ -639,9 +689,10 @@ class MchsScanPilot(Node):
         self.cmd_publisher.publish(cmd)
 
         # Fallback-оценка позиции, если одометрия пропала дольше ODOM_TIMEOUT_S.
+        # Считаем по мировой скорости: cmd_vel задаётся в системе корпуса.
         if not self._odom_fresh(now):
-            self.est_x += cmd.linear.x * dt
-            self.est_y += cmd.linear.y * dt
+            self.est_x += self._world_vx * dt
+            self.est_y += self._world_vy * dt
 
         row_index = self._current_row()
         progress = self._progress()

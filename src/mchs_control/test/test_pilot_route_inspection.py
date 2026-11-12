@@ -16,6 +16,7 @@ if CONTROL_PKG_DIR not in sys.path:
 
 from mchs_control.route_inspection import (  # noqa: E402
     InspectionController,
+    InspectionManeuver,
     link_loss_needs_rtl,
     parse_detection_event,
 )
@@ -109,6 +110,52 @@ def test_cancel_stops_hover():
     assert controller.on_event(_event(), 0.0) is True
     controller.cancel()
     assert controller.is_active(1.0) is False
+
+
+def test_maneuver_targets_standoff_point():
+    """Точка съёмки — не над очагом, а в 12 м от него (камера 45°)."""
+    maneuver = InspectionManeuver(standoff_m=12.0)
+    maneuver.start(20.0, 10.0, 0.0, 10.0, hold_s=10.0)
+    assert maneuver.target == (8.0, 10.0)
+    assert maneuver.phase == "APPROACH"
+    assert maneuver.active is True
+
+
+def test_maneuver_turns_toward_hazard():
+    """Очаг справа — доворот по часовой, слева — против."""
+    maneuver = InspectionManeuver()
+    maneuver.start(0.0, 10.0, 0.0, 0.0, hold_s=5.0)  # очаг на север (+Y)
+    cmd = maneuver.command(0.0, 0.0, 0.0, 0.0)
+    assert cmd["yaw_rate"] > 0
+
+    maneuver.start(0.0, -10.0, 0.0, 0.0, hold_s=5.0)  # очаг на юг (-Y)
+    cmd = maneuver.command(0.0, 0.0, 0.0, 0.0)
+    assert cmd["yaw_rate"] < 0
+
+
+def test_maneuver_approaches_holds_and_finishes():
+    maneuver = InspectionManeuver(standoff_m=12.0, arrive_m=2.5,
+                                  speed_mps=6.0)
+    maneuver.start(20.0, 10.0, 0.0, 10.0, hold_s=10.0)
+    cmd = maneuver.command(0.0, 0.0, 10.0, 0.0)
+    assert cmd["phase"] == "APPROACH"
+    assert cmd["vx"] > 0  # летим на восток, к точке съёмки
+
+    cmd = maneuver.command(1.0, 8.0, 10.0, 0.0)  # прибыли в точку
+    assert cmd["phase"] == "HOLD"
+    assert cmd["vx"] == 0.0 and cmd["vy"] == 0.0
+
+    assert maneuver.command(10.9, 8.0, 10.0, 0.0)["done"] is False
+    assert maneuver.command(11.1, 8.0, 10.0, 0.0)["done"] is True
+    assert maneuver.active is False
+
+
+def test_maneuver_stop_cancels():
+    maneuver = InspectionManeuver()
+    maneuver.start(5.0, 5.0, 0.0, 0.0, hold_s=10.0)
+    maneuver.stop()
+    assert maneuver.active is False
+    assert maneuver.command(1.0, 0.0, 0.0, 0.0)["active"] is False
 
 
 def test_link_loss_triggers_rtl_only_after_odom_in_scan():

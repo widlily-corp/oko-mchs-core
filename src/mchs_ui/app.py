@@ -409,6 +409,24 @@ def resolve_repo_path(value, fallback: Path) -> Path:
     return path if path.is_absolute() else REPO_ROOT / path
 
 
+def read_image_any(path: str | os.PathLike):
+    """Читает изображение по пути (в т.ч. UNC/WSL) через numpy + cv2.
+
+    ``cv2.imread`` на UNC-путях Windows иногда возвращает None, поэтому
+    читаем байты файла и декодируем вручную.
+    """
+    try:
+        target = Path(str(path))
+        if not target.is_absolute():
+            target = REPO_ROOT / target
+        data = np.fromfile(str(target), dtype=np.uint8)
+        if data.size == 0:
+            return None
+        return cv2.imdecode(data, cv2.IMREAD_COLOR)
+    except Exception:  # noqa: BLE001 - битый файл не должен ломать отчёт
+        return None
+
+
 def windows_path(path: str | os.PathLike) -> str:
     """Путь в виде, понятном Windows: из WSL — UNC-путь, на Windows — как есть."""
     text = str(path)
@@ -520,6 +538,7 @@ def normalize_protocol(raw: dict, path: str = "") -> dict:
         "battery": telemetry.get("battery_percent"),
         "recommended_response": data.get("recommended_response") or "",
         "timestamp": data.get("timestamp_msk") or data.get("timestamp") or "",
+        "photo": str(data.get("photo") or ""),
         "path": path,
     }
 
@@ -892,6 +911,9 @@ class OkoMchsApp(ctk.CTk):
         self._flight_frames_max = 24
         self._flight_frame_interval = 1.5
         self._last_flight_frame_ts = 0.0
+        # Фотофиксация инцидентов: кадр момента детекции + фото-улика борта.
+        self._incident_shots: list = []
+        self._incident_shot_keys: set = set()
         self._drag_key: str | None = None
         self._drag_moved = False
 
@@ -923,7 +945,7 @@ class OkoMchsApp(ctk.CTk):
         self.log(f"  · фото: {self.photos_dir}")
         self.log(f"  · видео: {self.video_dir}")
         self.log(f"  · инциденты: {self.incidents_dir}")
-        self.log(f"  · журналы: {LOGS_DIR} · папка отчётов: Ctrl+O")
+        self.log(f"  · журналы: {LOGS_DIR} · папка отчётов: Ctrl+O · видеорапорт: Ctrl+V")
         if self.scan_rows:
             self.log(f"План сканирования: рядов {len(self.scan_rows)}, файл {MISSION_PATH}.")
         if offline:
@@ -1353,6 +1375,7 @@ class OkoMchsApp(ctk.CTk):
         self.bind("<Key-p>", lambda _event: self.save_snapshot())
         self.bind("<Key-r>", lambda _event: self.toggle_recording())
         self.bind("<Key-g>", lambda _event: self.randomize_hazards())
+        self.bind("<Control-v>", lambda _event: self.compile_mission_video_report())
         self.bind("<Control-o>", lambda _event: self.open_reports_folder())
         self.bind("<Key-d>", lambda _event: self.build_diagnostic_bundle())
         self.bind("<Control-d>", lambda _event: self.build_diagnostic_bundle())
@@ -1460,6 +1483,8 @@ class OkoMchsApp(ctk.CTk):
             self.mission_active = True
             self.detected = False
             self._flight_frames.clear()
+            self._incident_shots.clear()
+            self._incident_shot_keys.clear()
             self._mission_btn_mode = "scan"
             self.btn_mission.configure(text="■ АВАРИЙНЫЙ ВОЗВРАТ (RTL)", fg_color=COLORS["crit"])
             if live:
@@ -1564,6 +1589,8 @@ class OkoMchsApp(ctk.CTk):
 
         self._sync_mission_button(phase)
         self._log_detection(state.get("detection") or {})
+        self._record_incident_shot(state.get("detection") or {},
+                                   state.get("reports") or {})
         return True
 
     def _sync_mission_button(self, scan_phase: str) -> None:
@@ -1601,9 +1628,50 @@ class OkoMchsApp(ctk.CTk):
         area = _as_float(event.get("area_sq_m"), 0.0) or 0.0
         x = _as_float(event.get("x"), 0.0) or 0.0
         y = _as_float(event.get("y"), 0.0) or 0.0
+        area_text = f"{area:.0f}" if area >= 10.0 else f"{area:.1f}"
         self.log(
             f"БОРТ: {event.get('hazard_type') or 'ЧС'} {event.get('threat_level') or ''}, "
-            f"{area:.0f} м², X {x:.1f} / Y {y:.1f} м".strip()
+            f"{area_text} м², X {x:.1f} / Y {y:.1f} м".strip()
+        )
+
+    def _record_incident_shot(self, detection: dict, reports: dict) -> None:
+        """Запоминает кадр и фото-улику момента детекции для видеорапорта."""
+        event = detection.get("last_event")
+        if not isinstance(event, dict) or not event:
+            return
+        x = _as_float(event.get("x"), None)
+        y = _as_float(event.get("y"), None)
+        # Ключ — инцидент и точка, без текстового типа: одно и то же событие
+        # приходит и из state.json ("VICTIM"), и из протокола ("ПОСТРАДАВШИЙ").
+        key = (
+            event.get("incident_id")
+            or str(event.get("hazard_type") or "").upper(),
+            round(x) if x is not None else None,
+            round(y) if y is not None else None,
+        )
+        if key in self._incident_shot_keys:
+            return
+        frame = self._capture_frame()
+        if frame is None:
+            return
+        photo = str(event.get("photo") or reports.get("last_photo") or "") or None
+        self._incident_shot_keys.add(key)
+        self._incident_shots.append({
+            "frame": frame.copy(),
+            "photo": photo,
+            "label": str(event.get("hazard_type") or "ЧС"),
+            "threat_level": str(event.get("threat_level") or ""),
+            "area": _as_float(event.get("area_sq_m"), None),
+            "x": x,
+            "y": y,
+            "time": str(event.get("ts") or ""),
+        })
+        if len(self._incident_shots) > 8:
+            self._incident_shots.pop(0)
+        self.log(
+            "🎥 Кадр инцидента сохранён для видеорапорта: "
+            f"{event.get('hazard_type')} {event.get('threat_level')} "
+            f"X={x if x is not None else '—'} Y={y if y is not None else '—'}"
         )
 
     # -- отчёты: снимки, запись, папка -------------------------------------
@@ -1788,10 +1856,25 @@ class OkoMchsApp(ctk.CTk):
         frames = [item.copy() for item in self._flight_frames][-12:]
         if not frames:
             frames = [snapshot]
+        # Фотофиксация: приоритет у снимка борта (там рамка и HUD детекции).
+        shots = []
+        for item in list(self._incident_shots)[-8:]:
+            shot_frame = item.get("frame")
+            photo = item.get("photo")
+            if photo:
+                loaded = read_image_any(photo)
+                if loaded is not None:
+                    shot_frame = loaded
+            if shot_frame is None:
+                continue
+            shots.append({**item, "frame": shot_frame})
         protocol = dict(self.protocol or {})
         self._video_report_busy = True
         self.btn_video_rep.configure(state="disabled", text="🎬 СБОРКА…")
-        self.log("🎬 Формирую тактический видеорапорт…")
+        self.log(
+            f"🎬 Формирую тактический видеорапорт: кадров полёта {len(frames)}, "
+            f"кадров инцидентов {len(shots)}…"
+        )
 
         def worker() -> None:
             try:
@@ -1816,15 +1899,18 @@ class OkoMchsApp(ctk.CTk):
                     "время_полёта": f"{max(0.0, time.time() - self.started_at):.0f} с",
                     "прогресс_сканирования": f"{progress * 100:.0f}%",
                     "кадров_обработано": self.frame_no,
-                    "инцидентов_в_отчёте": len(incidents),
+                    "инцидентов_зафиксировано": len(shots) or len(incidents),
                     "статус": self.phase,
                 }
                 stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                 self.video_dir.mkdir(parents=True, exist_ok=True)
                 path = self.video_dir / f"mission_report_{stamp}.mp4"
                 result = reporter.compile_report(
-                    frames=frames, incidents=incidents, stats=stats,
+                    frames=frames,
+                    incidents=[] if shots else incidents,
+                    stats=stats,
                     output_path=str(path),
+                    shots=shots,
                 )
                 self._video_report_queue.put(("ok", result))
             except Exception as error:  # noqa: BLE001 - показываем оператору
@@ -1850,6 +1936,10 @@ class OkoMchsApp(ctk.CTk):
                         "path": str(payload),
                     })
                 try:
+                    # MCHS_NO_VIDEO_AUTOPLAY=1 — не открывать плеер автоматически
+                    # (большой экран, запись демонстрации, автотесты).
+                    if os.environ.get("MCHS_NO_VIDEO_AUTOPLAY") == "1":
+                        return
                     if sys.platform == "win32" and hasattr(os, "startfile"):
                         os.startfile(str(payload))  # type: ignore[attr-defined]
                     else:
@@ -1910,6 +2000,17 @@ class OkoMchsApp(ctk.CTk):
         self.alarm_until = time.time() + 8.0
         self.log(f"⚠ ПРОТОКОЛ {protocol['incident_id']}: {protocol['hazard_type']}, {label}.")
         self._save_incident_photo(protocol)
+        self._record_incident_shot({
+            "last_event": {
+                "incident_id": protocol.get("incident_id"),
+                "hazard_type": protocol.get("hazard_type"),
+                "threat_level": protocol.get("threat_level"),
+                "area_sq_m": protocol.get("area_sq_m"),
+                "x": protocol.get("x"),
+                "y": protocol.get("y"),
+                "ts": time.strftime("%H:%M:%S"),
+            },
+        }, {"last_photo": protocol.get("photo") or ""})
         self._beep()
         if core_log_event:
             core_log_event("GCS_UI", "OPERATOR_ACTION", {
