@@ -302,6 +302,24 @@ def save_victim_evidence_snapshot(
     h, w = annotated.shape[:2]
     bx, by, bw, bh = bbox
 
+    # Enlarged evidence inset; keep the full scene for location context.
+    if bw > 0 and bh > 0 and w >= 320 and h >= 240:
+        margin = max(8, int(max(bw, bh) * 0.5))
+        x0, y0 = max(0, bx - margin), max(0, by - margin)
+        x1, y1 = min(w, bx + bw + margin), min(h, by + bh + margin)
+        crop = frame[y0:y1, x0:x1]
+        if crop.size:
+            box_w, box_h = w // 3, h // 2
+            factor = min(box_w / crop.shape[1], box_h / crop.shape[0])
+            zoom = cv2.resize(crop, (max(1, int(crop.shape[1] * factor)),
+                                     max(1, int(crop.shape[0] * factor))))
+            ih, iw = zoom.shape[:2]
+            ix, iy = w - iw - 12, 34
+            annotated[iy:iy + ih, ix:ix + iw] = zoom
+            cv2.rectangle(annotated, (ix, iy), (ix + iw, iy + ih), (0, 230, 255), 2)
+            cv2.putText(annotated, "ZOOM / PERSON", (ix, iy - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 230, 255), 1, cv2.LINE_AA)
+
     # Тактическая прицельная рамка вокруг человека
     cv2.rectangle(annotated, (bx - 4, by - 4), (bx + bw + 4, by + bh + 4), (0, 230, 255), 2)
     corner_len = max(6, min(bw, bh) // 3)

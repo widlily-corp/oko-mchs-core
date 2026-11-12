@@ -189,3 +189,18 @@ def test_victim_snapshot_write_failure_is_reported(tmp_path, monkeypatch):
         pose=Pose(x_m=1.0, y_m=2.0, z_m=22.0), output_dir=str(tmp_path),
     ) == ""
     assert list(tmp_path.iterdir()) == []
+
+
+def test_person_evidence_contains_enlarged_target(tmp_path, monkeypatch):
+    frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+    frame[350:370, 630:650] = (34, 87, 255)
+    captured = []
+    def save(path, image):
+        captured.append(image)
+        return True
+    monkeypatch.setattr(events_module.cv2, "imwrite", save)
+    save_victim_evidence_snapshot(frame, (640, 360), (630, 350, 20, 20),
+                                 Pose(x_m=0, y_m=0, z_m=22), str(tmp_path))
+    inset = captured[0][40:390, 850:1270]
+    orange = (inset[:, :, 2] > 240) & (inset[:, :, 1] > 70) & (inset[:, :, 1] < 110)
+    assert int(orange.sum()) > 4000
