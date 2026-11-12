@@ -79,3 +79,12 @@ def test_arena_controller_supports_human_hazard():
     assert proc.returncode == 0
     help_text = proc.stdout.lower()
     assert "human" in help_text or "victim" in help_text or "человек" in help_text
+
+
+def test_demo_person_is_visible_and_proportional():
+    root = ET.parse(os.path.join(PERSON_MODEL_DIR, "model.sdf")).getroot()
+    head = root.find(".//visual[@name='head']")
+    height = float(head.findtext("pose").split()[2]) + float(head.findtext("geometry/sphere/radius"))
+    vest = root.find(".//visual[@name='torso_vest']/geometry/box/size")
+    assert height >= 2.6
+    assert float(vest.text.split()[1]) >= 0.75

@@ -1,10 +1,11 @@
 <?xml version="1.0" ?>
 <sdf version="1.5">
   <model name="person_standing">
+    <!-- Демонстрационный масштаб 1.5: высота 2.64 м для обзора с 22 м. -->
     <static>true</static>
     <link name="link">
       <inertial>
-        <pose>0 0 0.9 0 0 0</pose>
+        <pose>0 0 1.35 0 0 0</pose>
         <mass>75.0</mass>
         <inertia>
           <ixx>24.0</ixx><ixy>0</ixy><ixz>0</ixz>
@@ -14,9 +15,9 @@
 
       <!-- Ноги / брюки (тёмно-синий/чёрный) -->
       <visual name="legs">
-        <pose>0 0 0.45 0 0 0</pose>
+        <pose>0 0 0.675 0 0 0</pose>
         <geometry>
-          <cylinder><radius>0.16</radius><length>0.9</length></cylinder>
+          <cylinder><radius>0.24</radius><length>1.35</length></cylinder>
         </geometry>
         <material>
           <ambient>0.1 0.12 0.16 1.0</ambient>
@@ -26,9 +27,9 @@
 
       <!-- Торс / Спасательный сигнальный оранжевый жилет (HIGH-VIS ORANGE #FF5722) -->
       <visual name="torso_vest">
-        <pose>0 0 1.15 0 0 0</pose>
+        <pose>0 0 1.725 0 0 0</pose>
         <geometry>
-          <box><size>0.32 0.52 0.60</size></box>
+          <box><size>0.48 0.78 0.9</size></box>
         </geometry>
         <material>
           <ambient>1.0 0.34 0.13 1.0</ambient>
@@ -39,9 +40,9 @@
 
       <!-- Светоотражающие полосы на жилете (CYAN / SILVER REFLECTIVE) -->
       <visual name="reflective_stripes">
-        <pose>0 0 1.25 0 0 0</pose>
+        <pose>0 0 1.875 0 0 0</pose>
         <geometry>
-          <box><size>0.34 0.54 0.10</size></box>
+          <box><size>0.51 0.81 0.15</size></box>
         </geometry>
         <material>
           <ambient>0.0 0.9 1.0 1.0</ambient>
@@ -52,9 +53,9 @@
 
       <!-- Голова и каска -->
       <visual name="head">
-        <pose>0 0 1.62 0 0 0</pose>
+        <pose>0 0 2.43 0 0 0</pose>
         <geometry>
-          <sphere><radius>0.14</radius></sphere>
+          <sphere><radius>0.21</radius></sphere>
         </geometry>
         <material>
           <ambient>0.95 0.85 0.20 1.0</ambient>
@@ -66,9 +67,9 @@
            Gazebo 11 / ODE не поддерживает capsule и падает с assertion,
            поэтому используем эквивалентный по габаритам цилиндр. -->
       <collision name="collision">
-        <pose>0 0 0.9 0 0 0</pose>
+        <pose>0 0 1.35 0 0 0</pose>
         <geometry>
-          <cylinder><radius>0.25</radius><length>1.4</length></cylinder>
+          <cylinder><radius>0.375</radius><length>2.1</length></cylinder>
         </geometry>
       </collision>
     </link>
