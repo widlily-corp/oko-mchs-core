@@ -3574,7 +3574,7 @@
     </model>
     <model name="fire_hazard">
       <static>true</static>
-      <pose>-62.2000 68.5000 0.2000 0 0 0</pose>
+      <pose>63.3000 59.8000 0.2000 0 0 0</pose>
       <link name="link">
       <visual name="ash_outer">
         <pose>0 0 -0.1700</pose>
@@ -3729,7 +3729,7 @@
     </model>
     <model name="oil_spill_hazard">
       <static>true</static>
-      <pose>-48.4000 64.1000 0.0200 0 0 0</pose>
+      <pose>74.6000 48.4000 0.0200 0 0 0</pose>
       <link name="link">
       <visual name="spill_edge">
         <pose>0 0 -0.0050</pose>
@@ -3775,7 +3775,7 @@
     </model>
     <model name="flood_hazard">
       <static>true</static>
-      <pose>-27.6000 65.1000 0.0200 0 0 0</pose>
+      <pose>49.6000 53.9000 0.0200 0 0 0</pose>
       <link name="link">
       <visual name="flood_edge">
         <pose>0 0 -0.0020</pose>
@@ -3821,7 +3821,7 @@
     </model>
     <model name="waste_hazard">
       <static>true</static>
-      <pose>-33.6000 39.8000 0.4000 0 0 0</pose>
+      <pose>36.1000 46.5000 0.4000 0 0 0</pose>
       <link name="link">
       <visual name="waste_hill">
         <pose>0 0 -3.0000</pose>
@@ -3914,7 +3914,7 @@
     <include>
       <name>person_standing</name>
       <uri>model://person_standing</uri>
-      <pose>15.0000 -22.0000 0.0000 0 0 0</pose>
+      <pose>40.7000 74.2000 0.0000 0 0 0</pose>
     </include>
     <!-- Крупный дрон МЧС largedrone (STL by Studio Mechanik), высота 22 м -->
     <include>
