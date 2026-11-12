@@ -121,3 +121,9 @@ def test_pipeline_returns_empty_on_clean_scene(arena):
     assert result.records == []
     assert result.events == []
     assert result.primary is None
+
+
+def test_default_ros_params_include_victim_class():
+    from pathlib import Path
+    text = (Path(__file__).parents[1] / "config" / "vision_params.yaml").read_text()
+    assert "enabled_classes: \"FIRE,SMOKE,OIL_SPILL,FLOOD,VICTIM\"" in text

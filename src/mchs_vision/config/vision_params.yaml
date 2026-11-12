@@ -46,5 +46,5 @@ mchs_vision_node:
     stream_port: 8080
     stream_quality: 80
 
-    enabled_classes: "FIRE,SMOKE,OIL_SPILL,FLOOD"
+    enabled_classes: "FIRE,SMOKE,OIL_SPILL,FLOOD,VICTIM"
     hud_title: "MCHS OPTICAL RECON // GAZEBO 11"
