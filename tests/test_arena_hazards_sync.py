@@ -60,3 +60,26 @@ def test_victim_alias_and_unknown_key(tmp_path, monkeypatch):
         assert json.load(handle)["HUMAN"]["x"] == -5.0
 
     assert module.update_hazards_config("nonsense", 0.0, 0.0, 0.0) is False
+
+
+def test_concurrent_writers_use_distinct_temporary_files(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    module = _load_module()
+    path = tmp_path / "hazards.json"
+    _write_config(str(path))
+    monkeypatch.setattr(module, "HAZARDS_CONFIG_PATH", str(path))
+    original_replace = module.os.replace
+    barrier = Barrier(2)
+    def synchronized_replace(src, dst):
+        barrier.wait(timeout=5)
+        original_replace(src, dst)
+    monkeypatch.setattr(module.os, "replace", synchronized_replace)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(module.update_hazards_config, "human", x, 3, 0)
+                   for x in (10, 20)]
+        assert [f.result(timeout=10) for f in futures] == [True, True]
+    data = json.loads(path.read_text())
+    assert data["HUMAN"]["x"] in (10, 20)
+    assert data["HUMAN"]["model"] == "person_standing"
+    assert list(tmp_path.iterdir()) == [path]

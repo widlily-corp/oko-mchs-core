@@ -8,6 +8,7 @@ import sys
 import os
 import argparse
 import json
+import tempfile
 import math
 import random
 import subprocess
@@ -98,9 +99,13 @@ def update_hazards_config(hazard_key: str, x: float, y: float,
     entry["x"] = round(float(x), 2)
     entry["y"] = round(float(y), 2)
     entry["z"] = round(float(z), 2)
-    tmp_path = HAZARDS_CONFIG_PATH + ".tmp"
+    tmp_path = None
     try:
-        with open(tmp_path, "w", encoding="utf-8") as handle:
+        with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", delete=False,
+                dir=os.path.dirname(os.path.abspath(HAZARDS_CONFIG_PATH)),
+                prefix=".hazards-", suffix=".tmp") as handle:
+            tmp_path = handle.name
             json.dump(data, handle, ensure_ascii=False, indent=2)
             handle.write("\n")
         os.replace(tmp_path, HAZARDS_CONFIG_PATH)
@@ -108,6 +113,12 @@ def update_hazards_config(hazard_key: str, x: float, y: float,
         if logger:
             logger.warning(f"config/hazards.json не обновлён: {exc}")
         return False
+    finally:
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except FileNotFoundError:
+                pass
     if logger:
         logger.info(
             f"config/hazards.json обновлён: {config_key} -> "
