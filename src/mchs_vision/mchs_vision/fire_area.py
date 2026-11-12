@@ -247,7 +247,9 @@ class FireAreaEstimator:
                 hfov_deg=self.camera.hfov_deg,
                 pitch_down_deg=self.camera.pitch_down_deg,
                 mount_forward_m=self.camera.mount_forward_m,
+                mount_right_m=self.camera.mount_right_m,
                 mount_up_m=self.camera.mount_up_m,
+                min_range_m=self.camera.min_range_m,
                 max_range_m=self.camera.max_range_m,
             )
             self.projector = GroundProjector(self.camera)

@@ -225,3 +225,15 @@ def test_cli_default_pitch_matches_largedrone_camera():
             data = json.load(handle)
         assert data["pitch_deg"] == 45.0
         assert 10.0 <= data["flame_area_m2"] <= 30.0
+
+
+def test_resize_keeps_camera_mount_and_range_parameters():
+    camera = CameraConfig(width=1280, height=720, mount_forward_m=0.42,
+                          mount_right_m=1.25, mount_up_m=0.12,
+                          min_range_m=2.0, max_range_m=77.0)
+    estimator = FireAreaEstimator(camera)
+    estimator.estimate(np.zeros((360, 640, 3), dtype=np.uint8),
+                       pose=Pose(z_m=22.0), annotate=False)
+    assert estimator.camera.mount_right_m == 1.25
+    assert estimator.camera.min_range_m == 2.0
+    assert estimator.camera.max_range_m == 77.0
