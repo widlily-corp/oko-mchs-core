@@ -1562,8 +1562,13 @@ class OkoMchsApp(ctk.CTk):
                 self.altitude = float(drone["z"])
             if drone.get("speed_mps") is not None:
                 self.speed = float(drone["speed_mps"])
-            if drone.get("yaw_deg") is not None:
-                self.heading_deg = float(drone["yaw_deg"]) % 360.0
+            # The camera follows body yaw; course over ground can differ
+            # during turns and inspections. Older servers only send yaw_deg.
+            body_heading = drone.get("body_yaw_deg")
+            if body_heading is None:
+                body_heading = drone.get("yaw_deg")
+            if body_heading is not None:
+                self.heading_deg = float(body_heading) % 360.0
             if drone.get("battery_percent") is not None:
                 self.battery = float(drone["battery_percent"])
         except (TypeError, ValueError):

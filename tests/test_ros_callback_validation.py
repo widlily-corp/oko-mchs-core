@@ -111,3 +111,20 @@ def test_route_aligned_camera_does_not_turn():
     callback("src/mchs_control/scripts/mchs_pilot_route.py", "_steer")(
         pilot, cmd, 10.0, 0.0, 10.0, 0.0, 0.0)
     assert cmd.angular.z == 0.0
+
+
+@pytest.mark.parametrize("drone,expected", [
+    ({"body_yaw_deg": 90.0, "yaw_deg": 0.0}, 90.0),
+    ({"yaw_deg": 270.0}, 270.0),
+])
+def test_map_heading_matches_camera_body_with_legacy_fallback(drone, expected):
+    state = {"drone": drone}
+    panel = NS(state_client=NS(latest=lambda: state), altitude=0.0,
+               heading_deg=0.0, scan_total=0, scan_rows=[], scan_row=None,
+               _sync_mission_button=lambda phase: None,
+               _log_detection=lambda detection: None,
+               _record_incident_shot=lambda *args: None)
+    poll = callback("src/mchs_ui/app.py", "_poll_live_state",
+                    _as_float=lambda value, default: default)
+    assert poll(panel) is True
+    assert panel.heading_deg == expected
