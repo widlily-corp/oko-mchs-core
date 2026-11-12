@@ -47,6 +47,7 @@ import random
 import subprocess
 import sys
 import threading
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -269,33 +270,37 @@ def save_hazards(hazards: dict, path: str | os.PathLike | None = None) -> Path:
     ``config/hazards.json`` в этот же момент и не должны увидеть обрезанный JSON.
     """
     target = Path(path) if path is not None else HAZARDS_PATH
-    comment = HAZARDS_COMMENT
+    payload = {"_comment": HAZARDS_COMMENT}
     try:
         with open(target, "r", encoding="utf-8") as handle:
             existing = json.load(handle)
-        if isinstance(existing, dict) and existing.get("_comment"):
-            comment = existing["_comment"]
+        if isinstance(existing, dict):
+            payload.update(existing)
     except (OSError, ValueError):
         pass
-
-    payload = {"_comment": comment}
-    payload.update({key: dict(value) for key, value in hazards.items()})
+    for key, value in hazards.items():
+        previous = payload.get(key)
+        entry = dict(previous) if isinstance(previous, dict) else {}
+        entry.update(value)
+        payload[key] = entry
     target.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = target.with_name(target.name + ".tmp")
-    with open(tmp_path, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=False, indent=2)
-        handle.write("\n")
+    # Each writer owns its temporary file. Never truncate the published config,
+    # even when Windows refuses replacement while a reader holds it open.
+    tmp_path = None
     try:
-        os.replace(tmp_path, target)
-    except OSError:
-        # На Windows файл может быть кратковременно занят читателем — пишем напрямую.
-        with open(target, "w", encoding="utf-8") as handle:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8",
+                                         dir=target.parent, prefix=target.name + ".",
+                                         suffix=".tmp", delete=False) as handle:
+            tmp_path = handle.name
             json.dump(payload, handle, ensure_ascii=False, indent=2)
             handle.write("\n")
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
+        os.replace(tmp_path, target)
+    finally:
+        if tmp_path is not None:
+            try:
+                os.remove(tmp_path)
+            except FileNotFoundError:
+                pass
     return target
 
 
