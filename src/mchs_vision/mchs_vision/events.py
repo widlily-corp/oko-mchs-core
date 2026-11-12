@@ -315,7 +315,7 @@ def save_victim_evidence_snapshot(
     cv2.rectangle(annotated, (15, 15), (15 + card_w, 15 + card_h), (0, 230, 255), 2)
     font = cv2.FONT_HERSHEY_SIMPLEX
     cv2.putText(annotated, "MCHS SAR // VICTIM LOCATED", (25, 38), font, 0.52, (0, 230, 255), 1, cv2.LINE_AA)
-    cv2.putText(annotated, f"COORD: X={pose.x_m:.1f}m, Y={pose.y_m:.1f}m, ALT={pose.z_m:.1f}m", (25, 62), font, 0.44, (255, 255, 255), 1, cv2.LINE_AA)
+    cv2.putText(annotated, f"BOARD: X={pose.x_m:.1f}m, Y={pose.y_m:.1f}m, ALT={pose.z_m:.1f}m", (25, 62), font, 0.44, (255, 255, 255), 1, cv2.LINE_AA)
     cv2.putText(annotated, "STATUS: CRITICAL RESCUE NEEDED", (25, 84), font, 0.44, (0, 90, 255), 1, cv2.LINE_AA)
 
     cv2.imwrite(full_path, annotated)
