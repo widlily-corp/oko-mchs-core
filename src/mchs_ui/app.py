@@ -606,11 +606,11 @@ class VideoClient(threading.Thread):
         self.lock = threading.Lock()
         self.status = "OFFLINE"
         self.fps = 0.0
-        self._stop = False
+        self._stop_event = threading.Event()
 
     def stop(self) -> None:
         """Просит поток завершиться."""
-        self._stop = True
+        self._stop_event.set()
 
     def snapshot(self):
         """Копия последнего кадра (или None)."""
@@ -619,7 +619,7 @@ class VideoClient(threading.Thread):
 
     def run(self) -> None:
         """Основной цикл: MJPEG, при неудаче — опрос снимков."""
-        while not self._stop:
+        while not self._stop_event.is_set():
             if not self.enabled:
                 self.status = "СИМУЛЯЦИЯ"
                 time.sleep(0.5)
@@ -641,7 +641,7 @@ class VideoClient(threading.Thread):
         frames = 0
         started = time.time()
         try:
-            while not self._stop:
+            while not self._stop_event.is_set():
                 chunk = response.read(4096)
                 if not chunk:
                     break
@@ -727,11 +727,11 @@ class StateClient(threading.Thread):
         self.state: dict | None = None
         self.stamp = 0.0
         self.lock = threading.Lock()
-        self._stop = False
+        self._stop_event = threading.Event()
 
     def stop(self) -> None:
         """Просит поток завершиться."""
-        self._stop = True
+        self._stop_event.set()
 
     def latest(self, max_age: float = 2.0):
         """Свежий снимок состояния или None, если данных нет или они устарели."""
@@ -744,7 +744,7 @@ class StateClient(threading.Thread):
 
     def run(self) -> None:
         """Основной цикл: запрос state.json каждые ~0,2 с."""
-        while not self._stop:
+        while not self._stop_event.is_set():
             if not self.enabled:
                 time.sleep(0.5)
                 continue
@@ -791,12 +791,12 @@ class RecordingWriter(threading.Thread):
         self.written = 0
         self.error: str | None = None
         self.started_at = time.time()
-        self._stop = False
+        self._stop_event = threading.Event()
         self._finished = threading.Event()
 
     def offer(self, frame) -> bool:
         """Кладёт кадр в очередь без ожидания. False — очередь переполнена."""
-        if self._stop or frame is None:
+        if self._stop_event.is_set() or frame is None:
             return False
         try:
             self.queue.put_nowait(frame.copy())
@@ -806,7 +806,7 @@ class RecordingWriter(threading.Thread):
 
     def stop(self) -> None:
         """Просит поток дописать файл и завершиться."""
-        self._stop = True
+        self._stop_event.set()
 
     def wait_finished(self, timeout: float = 3.0) -> bool:
         """Ждёт завершения потока записи (файл к этому моменту закрыт)."""
@@ -825,7 +825,7 @@ class RecordingWriter(threading.Thread):
                 try:
                     frame = self.queue.get(timeout=0.2)
                 except queue.Empty:
-                    if self._stop:
+                    if self._stop_event.is_set():
                         break
                     continue
                 if frame is None:
@@ -834,7 +834,7 @@ class RecordingWriter(threading.Thread):
                     frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_LINEAR)
                 writer.write(frame)
                 self.written += 1
-                if self._stop and self.queue.empty():
+                if self._stop_event.is_set() and self.queue.empty():
                     break
         except Exception as error:
             self.error = f"{type(error).__name__}: {error}"
