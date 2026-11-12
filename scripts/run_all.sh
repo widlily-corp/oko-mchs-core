@@ -45,9 +45,33 @@ fi
 
 export GAZEBO_MODEL_PATH="$REPO_DIR/src/mchs_simulation/models:/usr/share/gazebo-11/models:${GAZEBO_MODEL_PATH:-}"
 export PYTHONPATH="$REPO_DIR/src:$REPO_DIR/src/mchs_vision:$REPO_DIR/src/mchs_core:$REPO_DIR/src/mchs_control:$REPO_DIR/src/mchs_ui:${PYTHONPATH:-}"
-export LIBGL_ALWAYS_SOFTWARE=1
-export GALLIUM_DRIVER=llvmpipe
-export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
+# Prefer the WSLg GPU (D3D12/OpenGL) when Mesa reports real hardware
+# acceleration; keep an explicit software mode for headless machines.
+MCHS_RENDERER=${MCHS_RENDERER:-auto}
+case "$MCHS_RENDERER" in
+    auto)
+        if [ -e /dev/dxg ] && command -v glxinfo >/dev/null 2>&1 \
+                && glxinfo -B 2>/dev/null | grep -q 'Accelerated: yes'; then
+            unset LIBGL_ALWAYS_SOFTWARE GALLIUM_DRIVER MESA_LOADER_DRIVER_OVERRIDE
+            echo "[INFO] WSLg GPU renderer: $(glxinfo -B 2>/dev/null | sed -n 's/^[[:space:]]*OpenGL renderer string: //p' | head -n 1)"
+        else
+            export LIBGL_ALWAYS_SOFTWARE=1
+            export GALLIUM_DRIVER=llvmpipe
+            export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
+            echo "[INFO] ?????????? OpenGL ?? ??????; ???????????? ??????????? llvmpipe."
+        fi
+        ;;
+    software)
+        export LIBGL_ALWAYS_SOFTWARE=1
+        export GALLIUM_DRIVER=llvmpipe
+        export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
+        echo "[INFO] ??????????? ???????? ?????? ????? MCHS_RENDERER=software."
+        ;;
+    *)
+        echo "[??????] ??????????? MCHS_RENDERER='$MCHS_RENDERER' (auto/software)." >&2
+        exit 2
+        ;;
+esac
 
 PIDS=()
 cleanup() {
