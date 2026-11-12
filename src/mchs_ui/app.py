@@ -2162,6 +2162,13 @@ class OkoMchsApp(ctk.CTk):
         """Печатный бланк оперативного дежурного."""
         geo = data["target_geo"]
         telemetry = data["drone_telemetry"]
+        hazard_text = str(data.get("hazard_type") or "")
+        is_person = (str(data.get("hazard_code") or hazard_text).upper() in ("VICTIM", "HUMAN")
+                     or "ЧЕЛОВЕК" in hazard_text.upper() or "ПОСТРАДАВШ" in hazard_text.upper())
+        threat_text = {"CRITICAL": "КРИТИЧЕСКАЯ УГРОЗА", "WARNING": "ВНИМАНИЕ",
+                       "ADVISORY": "НАБЛЮДЕНИЕ"}.get(data["threat_level"], data["threat_level"])
+        area_line = ("Объект ..................... Человек; число людей и состояние требуют проверки"
+                     if is_person else f"Площадь поражения ........... {data['estimated_area_sq_m']:.1f} м²")
         lines = [
             "=" * 72,
             f"ПРОТОКОЛ ИНЦИДЕНТА № {data['incident_id']}".center(72),
@@ -2169,9 +2176,11 @@ class OkoMchsApp(ctk.CTk):
             "=" * 72,
             f"Дата и время фиксации ....... {data['timestamp_msk']} (МСК)",
             f"Тип чрезвычайной ситуации ... {data['hazard_type']}",
-            f"Уровень угрозы .............. {data['threat_level']}",
+            f"Уровень угрозы .............. {threat_text} ({data['threat_level']})",
             f"Координаты очага (X, Y) ..... {geo['abs_x']:.1f} м, {geo['abs_y']:.1f} м",
-            f"Площадь поражения ........... {data['estimated_area_sq_m']:.1f} м²",
+            area_line,
+            "Система координат .......... Полигон, метры; X вправо, Y вверх на карте",
+            "Статус ..................... Автоматическое обнаружение; требуется проверка оператором",
             f"Борт ........................ {telemetry['drone_id']}",
             f"Высота / заряд АКБ .......... {telemetry['altitude_m']:.1f} м / {telemetry['battery_percent']:.0f} %",
             "-" * 72,

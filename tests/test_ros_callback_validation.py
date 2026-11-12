@@ -128,3 +128,16 @@ def test_map_heading_matches_camera_body_with_legacy_fallback(drone, expected):
                     _as_float=lambda value, default: default)
     assert poll(panel) is True
     assert panel.heading_deg == expected
+
+
+def test_person_text_report_explains_detection_not_injury_or_area():
+    data = dict(incident_id="TEST", station="ЦУКС", timestamp_msk="12:00",
+                hazard_type="VICTIM", threat_level="CRITICAL", estimated_area_sq_m=1.8,
+                target_geo=dict(abs_x=10.0, abs_y=20.0),
+                drone_telemetry=dict(drone_id="UAV", altitude_m=22.0, battery_percent=90),
+                recommended_response="Проверить место", recommended_actions=[])
+    text = callback("src/mchs_ui/app.py", "render_blank")(data)
+    assert "Человек; число людей и состояние требуют проверки" in text
+    assert "КРИТИЧЕСКАЯ УГРОЗА" in text
+    assert "Площадь поражения" not in text
+    assert "проверка оператором" in text
