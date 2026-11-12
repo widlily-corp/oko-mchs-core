@@ -1000,124 +1000,111 @@ class OkoMchsApp(ctk.CTk):
         )
 
     def _build_ui(self) -> None:
-        """Собирает шапку, рабочую область и нижнюю панель."""
+        """Камера — главный экран; карта и находки — компактная боковая панель."""
+        self._details_visible = False
         self._build_header()
-
-        body = ctk.CTkFrame(self, fg_color="transparent")
-        body.pack(fill="both", expand=True, padx=12, pady=(8, 4))
-        body.grid_columnconfigure(0, weight=3, uniform="body")
-        body.grid_columnconfigure(1, weight=2, uniform="body")
-        body.grid_rowconfigure(0, weight=1)
-
-        self._build_map(body)
-        self._build_camera(body)
         self._build_footer()
 
+        body = ctk.CTkFrame(self, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=18, pady=(4, 18))
+        body.grid_columnconfigure(0, weight=1)
+        body.grid_columnconfigure(1, weight=0, minsize=360)
+        body.grid_rowconfigure(0, weight=1)
+        self._build_camera(body)
+        side = ctk.CTkFrame(body, fg_color="transparent", width=360)
+        side.grid(row=0, column=1, sticky="nsew", padx=(12, 0))
+        side.grid_columnconfigure(0, weight=1)
+        side.grid_rowconfigure(0, weight=0, minsize=315)
+        side.grid_rowconfigure(1, weight=1)
+        self._build_map(side)
+        self._build_incident_card(side)
+
     def _build_header(self) -> None:
-        """Верхняя строка: бренд, фаза миссии, статус связи, часы."""
-        header = ctk.CTkFrame(self, fg_color=COLORS["panel_alt"], corner_radius=0, height=64)
-        header.pack(fill="x")
-        header.pack_propagate(False)
-
+        """Два спокойных ряда: название и связь, затем управление миссией."""
+        header = ctk.CTkFrame(self, fg_color="transparent", height=64)
+        header.pack(fill="x", padx=20, pady=(12, 0))
         brand = ctk.CTkFrame(header, fg_color="transparent")
-        brand.pack(side="left", padx=18, pady=8)
+        brand.pack(side="left")
+        ctk.CTkLabel(brand, text="ОКО МЧС", font=ctk.CTkFont(FONT_UI, 26, "bold"),
+                     text_color=COLORS["text"]).pack(anchor="w")
+        ctk.CTkLabel(brand, text="Наблюдаем. Обнаруживаем. Помогаем.",
+                     font=ctk.CTkFont(FONT_UI, 12), text_color=COLORS["muted"]).pack(anchor="w")
+        self.btn_details = ctk.CTkButton(
+            header, text="Подробности", width=126, height=34,
+            fg_color=COLORS["panel"], hover_color=COLORS["border"],
+            command=self._toggle_details)
+        self.btn_details.pack(side="right", padx=(14, 0))
+        self.lbl_clock = ctk.CTkLabel(header, text=now_str(),
+            font=ctk.CTkFont(FONT_MONO, 12), text_color=COLORS["muted"])
+        self.lbl_clock.pack(side="right", padx=12)
+        self.lbl_link = ctk.CTkLabel(header, text="Ожидаем подключение",
+            font=ctk.CTkFont(FONT_UI, 12), text_color=COLORS["muted"])
+        self.lbl_link.pack(side="right")
 
-        ctk.CTkLabel(
-            brand, text="◉ ОКО МЧС", font=ctk.CTkFont(FONT_UI, 22, "bold"), text_color=COLORS["accent"]
-        ).pack(side="left")
-        ctk.CTkLabel(
-            brand,
-            text="  АРМ ОПЕРАТОРА ЦУКС  •  автономный БПЛА-мониторинг ЧС",
-            font=ctk.CTkFont(FONT_UI, 12),
-            text_color=COLORS["muted"],
-        ).pack(side="left", pady=(6, 0))
+        ribbon = self._card(self)
+        ribbon.pack(fill="x", padx=18, pady=(14, 12))
+        self.btn_mission = ctk.CTkButton(
+            ribbon, text="▶ Начать патрулирование", width=236, height=42,
+            font=ctk.CTkFont(FONT_UI, 13, "bold"),
+            fg_color=COLORS["accent"], hover_color=COLORS["accent_dark"],
+            command=self.toggle_mission)
+        self.btn_mission.pack(side="left", padx=14, pady=12)
+        state = ctk.CTkFrame(ribbon, fg_color="transparent")
+        state.pack(side="left", padx=12)
+        self.lbl_phase = ctk.CTkLabel(state, text="Готов к вылету",
+            font=ctk.CTkFont(FONT_UI, 14, "bold"), text_color=COLORS["text"])
+        self.lbl_phase.pack(anchor="w")
+        self.lbl_flight_summary = ctk.CTkLabel(state, text="Высота 0 м · Скорость 0 м/с · Заряд 98%",
+            font=ctk.CTkFont(FONT_UI, 12), text_color=COLORS["muted"])
+        self.lbl_flight_summary.pack(anchor="w")
+        self.lbl_threat = ctk.CTkLabel(ribbon, text="● Ожидание обнаружений", corner_radius=8,
+            padx=14, pady=6, fg_color=COLORS["panel_alt"],
+            font=ctk.CTkFont(FONT_UI, 12, "bold"), text_color=COLORS["muted"])
+        self.lbl_threat.pack(side="right", padx=14)
 
-        right = ctk.CTkFrame(header, fg_color="transparent")
-        right.pack(side="right", padx=16, pady=10)
-
-        self.lbl_clock = ctk.CTkLabel(
-            right, text=now_str(), font=ctk.CTkFont(FONT_MONO, 13, "bold"), text_color=COLORS["muted"]
-        )
-        self.lbl_clock.pack(side="right", padx=(10, 0))
-
-        self.lbl_link = ctk.CTkLabel(
-            right,
-            text="● СВЯЗЬ: ПОИСК",
-            font=ctk.CTkFont(FONT_UI, 12, "bold"),
-            fg_color=COLORS["panel"],
-            corner_radius=6,
-            padx=12,
-            pady=5,
-            text_color=COLORS["muted"],
-        )
-        self.lbl_link.pack(side="right", padx=6)
-
-        self.lbl_phase = ctk.CTkLabel(
-            right,
-            text="ДЕЖУРСТВО",
-            font=ctk.CTkFont(FONT_UI, 12, "bold"),
-            fg_color=COLORS["panel"],
-            corner_radius=6,
-            padx=12,
-            pady=5,
-            text_color=COLORS["info"],
-        )
-        self.lbl_phase.pack(side="right", padx=6)
-
-        self.lbl_threat = ctk.CTkLabel(
-            right,
-            text="УГРОЗА: НЕТ",
-            font=ctk.CTkFont(FONT_UI, 12, "bold"),
-            fg_color=COLORS["panel"],
-            corner_radius=6,
-            padx=12,
-            pady=5,
-            text_color=COLORS["ok"],
-        )
-        self.lbl_threat.pack(side="right", padx=6)
-
-        # Статус сканирования: «РЯД k/N · NN%» из state.scan
-        self.lbl_scan = ctk.CTkLabel(
-            right,
-            text="СКАН: —",
-            font=ctk.CTkFont(FONT_UI, 12, "bold"),
-            fg_color=COLORS["panel"],
-            corner_radius=6,
-            padx=12,
-            pady=5,
-            text_color=COLORS["info"],
-        )
-        self.lbl_scan.pack(side="right", padx=6)
+    def _toggle_details(self) -> None:
+        """Показывает технические параметры, журнал и экспорт по запросу."""
+        self._details_visible = not self._details_visible
+        if self._details_visible:
+            self.details_window.deiconify()
+            self.details_window.lift()
+        else:
+            self.details_window.withdraw()
+        self.btn_details.configure(text="Скрыть подробности" if self._details_visible else "Подробности")
 
     def _build_map(self, parent) -> None:
-        """Левая колонка: тактическая карта и выбор объекта."""
+        """Компактная карта и выбор сценария в правой колонке."""
         card = self._card(parent)
-        card.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        card.grid(row=0, column=0, sticky="nsew", pady=(0, 12))
+        card.configure(height=303)
+        card.pack_propagate(False)
 
         head = ctk.CTkFrame(card, fg_color="transparent")
         head.pack(fill="x", padx=12, pady=(10, 4))
 
         ctk.CTkLabel(
-            head, text="▣ ТАКТИЧЕСКАЯ КАРТА ПОЛИГОНА", font=ctk.CTkFont(FONT_UI, 12, "bold"),
+            head, text="Карта полигона", font=ctk.CTkFont(FONT_UI, 12, "bold"),
             text_color=COLORS["text"],
         ).pack(side="left")
 
-        self.selector = ctk.CTkSegmentedButton(
-            head,
+        controls = ctk.CTkFrame(card, fg_color="transparent")
+        controls.pack(fill="x", padx=12, pady=(0, 6))
+        self.selector = ctk.CTkOptionMenu(
+            controls,
             values=[HAZARDS_DB[key]["short"] for key in HAZARDS_DB],
             command=self.on_hazard_select,
             font=ctk.CTkFont(FONT_UI, 11, "bold"),
-            selected_color=COLORS["accent"],
-            selected_hover_color=COLORS["accent_dark"],
-            height=26,
+            fg_color=COLORS["panel_alt"],
+            button_color=COLORS["border"], width=158,
+            height=30,
         )
         self.selector.set(HAZARDS_DB[self.hazard_key]["short"])
-        self.selector.pack(side="right")
+        self.selector.pack(side="left", fill="x", expand=True)
 
         self.btn_random = ctk.CTkButton(
-            head, text="🎲 СЛУЧАЙНО", width=118, height=26,
+            controls, text="Новый сценарий", width=126, height=30,
             font=ctk.CTkFont(FONT_UI, 11, "bold"),
-            fg_color=COLORS["warn"], hover_color="#D97706", text_color="#0B0F14",
+            fg_color=COLORS["panel_alt"], hover_color=COLORS["border"], text_color=COLORS["text"],
             command=self.randomize_hazards,
         )
         self.btn_random.pack(side="right", padx=(8, 0))
@@ -1131,20 +1118,20 @@ class OkoMchsApp(ctk.CTk):
         self.map_canvas.bind("<ButtonRelease-1>", self._on_map_release)
 
     def _build_camera(self, parent) -> None:
-        """Правая колонка: бортовая камера и режимы съёмки."""
+        """Основная колонка: камера и режимы съёмки."""
         card = self._card(parent)
-        card.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
+        card.grid(row=0, column=0, sticky="nsew")
 
         head = ctk.CTkFrame(card, fg_color="transparent")
         head.pack(fill="x", padx=12, pady=(10, 4))
 
         ctk.CTkLabel(
-            head, text="▣ БОРТОВАЯ КАМЕРА", font=ctk.CTkFont(FONT_UI, 12, "bold"),
+            head, text="Вид с дрона", font=ctk.CTkFont(FONT_UI, 12, "bold"),
             text_color=COLORS["text"],
         ).pack(side="left")
 
         self.btn_overlay = ctk.CTkButton(
-            head, text="ИИ-ОВЕРЛЕЙ", width=110, height=26,
+            head, text="Подсветка объектов", width=155, height=26,
             font=ctk.CTkFont(FONT_UI, 11, "bold"),
             fg_color=COLORS["panel_alt"], hover_color=COLORS["border"], text_color=COLORS["ok"],
             command=self.toggle_overlay,
@@ -1152,7 +1139,7 @@ class OkoMchsApp(ctk.CTk):
         self.btn_overlay.pack(side="right", padx=(6, 0))
 
         self.btn_thermal = ctk.CTkButton(
-            head, text="ТЕПЛОВИЗОР", width=120, height=26,
+            head, text="Тепловизор", width=120, height=26,
             font=ctk.CTkFont(FONT_UI, 11, "bold"),
             fg_color=COLORS["panel_alt"], hover_color=COLORS["border"], text_color=COLORS["text"],
             command=self.toggle_thermal,
@@ -1167,7 +1154,7 @@ class OkoMchsApp(ctk.CTk):
         actions.pack(fill="x", padx=12, pady=(0, 4))
 
         self.btn_photo = ctk.CTkButton(
-            actions, text="📸 СНИМОК", height=26,
+            actions, text="Снимок", height=26,
             font=ctk.CTkFont(FONT_UI, 10, "bold"),
             fg_color=COLORS["panel_alt"], hover_color=COLORS["border"], text_color=COLORS["text"],
             command=self.save_snapshot,
@@ -1175,7 +1162,7 @@ class OkoMchsApp(ctk.CTk):
         self.btn_photo.pack(side="left", expand=True, fill="x", padx=(0, 3))
 
         self.btn_record = ctk.CTkButton(
-            actions, text="● ЗАПИСЬ", height=26,
+            actions, text="Запись", height=26,
             font=ctk.CTkFont(FONT_UI, 10, "bold"),
             fg_color=COLORS["panel_alt"], hover_color=COLORS["border"], text_color=COLORS["crit"],
             command=self.toggle_recording,
@@ -1183,7 +1170,7 @@ class OkoMchsApp(ctk.CTk):
         self.btn_record.pack(side="left", expand=True, fill="x", padx=2)
 
         self.btn_reports = ctk.CTkButton(
-            actions, text="📂 ОТЧЁТЫ", height=26,
+            actions, text="Отчёты", height=26,
             font=ctk.CTkFont(FONT_UI, 10, "bold"),
             fg_color=COLORS["panel_alt"], hover_color=COLORS["border"], text_color=COLORS["info"],
             command=self.open_reports_folder,
@@ -1194,7 +1181,7 @@ class OkoMchsApp(ctk.CTk):
         foot.pack(fill="x", padx=12, pady=(0, 10))
 
         self.lbl_mode = ctk.CTkLabel(
-            foot, text="РЕЖИМ: ОПТИЧЕСКИЙ 4K", font=ctk.CTkFont(FONT_MONO, 11), text_color=COLORS["muted"]
+            foot, text="Оптическая камера", font=ctk.CTkFont(FONT_MONO, 11), text_color=COLORS["muted"]
         )
         self.lbl_mode.pack(side="left")
 
@@ -1209,16 +1196,23 @@ class OkoMchsApp(ctk.CTk):
         self.lbl_fps.pack(side="right")
 
     def _build_footer(self) -> None:
-        """Нижняя панель: телеметрия, карточка инцидента, журнал и кнопки."""
-        footer = ctk.CTkFrame(self, fg_color="transparent", height=250)
-        footer.pack(fill="x", padx=12, pady=(2, 12))
-        footer.grid_columnconfigure(0, weight=0, minsize=330)
-        footer.grid_columnconfigure(1, weight=2, uniform="footer")
-        footer.grid_columnconfigure(2, weight=3, uniform="footer")
+        """Дополнительные инструменты остаются доступны без перегрузки экрана."""
+        self.details_window = ctk.CTkToplevel(self)
+        self.details_window.title("ОКО МЧС — подробности полёта и отчёты")
+        self.details_window.geometry("1060x360")
+        self.details_window.minsize(960, 320)
+        self.details_window.configure(fg_color=COLORS["bg"])
+        self.details_window.withdraw()
+        self.details_window.protocol("WM_DELETE_WINDOW", self._toggle_details)
+        footer = ctk.CTkFrame(self.details_window, fg_color="transparent")
+        footer.pack(fill="both", expand=True, padx=14, pady=14)
+        self.details_panel = footer
+        footer.grid_columnconfigure(0, weight=0, minsize=280)
+        footer.grid_columnconfigure(1, weight=0, minsize=280)
+        footer.grid_columnconfigure(2, weight=1)
         footer.grid_rowconfigure(0, weight=1)
-
         self._build_telemetry(footer)
-        self._build_incident_card(footer)
+        self._build_report_tools(footer)
         self._build_log(footer)
 
     def _build_telemetry(self, parent) -> None:
@@ -1265,16 +1259,19 @@ class OkoMchsApp(ctk.CTk):
             card, text="98 %", font=ctk.CTkFont(FONT_MONO, 12, "bold"), text_color=COLORS["ok"]
         )
         self.lbl_battery.pack(anchor="e", padx=14, pady=(0, 8))
+        self.lbl_scan = ctk.CTkLabel(card, text="Сканирование: —",
+            font=ctk.CTkFont(FONT_UI, 12), text_color=COLORS["muted"])
+        self.lbl_scan.pack(anchor="w", padx=14, pady=(0, 10))
 
     def _build_incident_card(self, parent) -> None:
         """Карточка инцидента и кнопки управления."""
         card = self._card(parent)
-        card.grid(row=0, column=1, sticky="nsew", padx=6)
+        card.grid(row=1, column=0, sticky="nsew")
 
         head = ctk.CTkFrame(card, fg_color="transparent")
         head.pack(fill="x", padx=14, pady=(10, 4))
         ctk.CTkLabel(
-            head, text="ПРОТОКОЛ ИНЦИДЕНТА", font=ctk.CTkFont(FONT_UI, 11, "bold"), text_color=COLORS["muted"]
+            head, text="Обнаружения", font=ctk.CTkFont(FONT_UI, 11, "bold"), text_color=COLORS["muted"]
         ).pack(side="left")
 
         self.lbl_incident_id = ctk.CTkLabel(
@@ -1283,13 +1280,13 @@ class OkoMchsApp(ctk.CTk):
         self.lbl_incident_id.pack(side="right")
 
         self.lbl_incident_type = ctk.CTkLabel(
-            card, text="Инцидентов не зафиксировано", font=ctk.CTkFont(FONT_UI, 15, "bold"),
+            card, text="Пока всё спокойно", font=ctk.CTkFont(FONT_UI, 15, "bold"),
             text_color=COLORS["text"], anchor="w",
         )
         self.lbl_incident_type.pack(fill="x", padx=14, pady=(2, 2))
 
         self.lbl_incident_meta = ctk.CTkLabel(
-            card, text="Ожидание данных от борта", font=ctk.CTkFont(FONT_UI, 11),
+            card, text="При обнаружении здесь появятся тип ЧС,\nкоординаты и рекомендации.", font=ctk.CTkFont(FONT_UI, 11),
             text_color=COLORS["muted"], anchor="w", justify="left",
         )
         self.lbl_incident_meta.pack(fill="x", padx=14, pady=(0, 4))
@@ -1301,20 +1298,22 @@ class OkoMchsApp(ctk.CTk):
         self.lbl_incident_response.pack(fill="x", padx=14, pady=(0, 6))
         # Ширина карточки меняется вместе с окном: перенос строк обязан
         # следовать за ней, иначе рекомендация по наряду обрезается по краю.
-        card.bind("<Configure>", lambda event: self.lbl_incident_response.configure(
-            wraplength=max(180, event.width - 44)))
+        self.lbl_incident_type.configure(wraplength=300, justify="left")
+        self.lbl_incident_meta.configure(wraplength=300)
+        card.bind("<Configure>", lambda event: [label.configure(
+            wraplength=max(140, event.width - 32)) for label in (
+                self.lbl_incident_type, self.lbl_incident_meta, self.lbl_incident_response)])
+        ctk.CTkLabel(card, text="Снимки и протокол сохраняются автоматически",
+            font=ctk.CTkFont(FONT_UI, 11), text_color=COLORS["muted"],
+            wraplength=300).pack(side="bottom", padx=14, pady=14)
 
+    def _build_report_tools(self, parent) -> None:
+        card = self._card(parent)
+        card.grid(row=0, column=1, sticky="nsew", padx=6)
+        ctk.CTkLabel(card, text="Документы и отчёты", font=ctk.CTkFont(FONT_UI, 13, "bold"),
+                     text_color=COLORS["text"]).pack(anchor="w", padx=14, pady=(12, 8))
         buttons = ctk.CTkFrame(card, fg_color="transparent")
-        buttons.pack(fill="x", padx=14, pady=(0, 12), side="bottom")
-
-        self.btn_mission = ctk.CTkButton(
-            buttons, text="▶ СТАРТ ПАТРУЛИРОВАНИЯ", height=38,
-            font=ctk.CTkFont(FONT_UI, 12, "bold"),
-            fg_color=COLORS["accent"], hover_color=COLORS["accent_dark"],
-            command=self.toggle_mission,
-        )
-        self.btn_mission.pack(fill="x", pady=(0, 6))
-
+        buttons.pack(fill="x", padx=14, pady=(0, 12))
         row = ctk.CTkFrame(buttons, fg_color="transparent")
         row.pack(fill="x")
 
@@ -1325,13 +1324,13 @@ class OkoMchsApp(ctk.CTk):
         self.btn_json.pack(side="left", expand=True, fill="x", padx=(0, 3))
 
         self.btn_txt = ctk.CTkButton(
-            row, text="БЛАНК TXT", height=30, font=ctk.CTkFont(FONT_UI, 11, "bold"),
+            row, text="Бланк", height=30, font=ctk.CTkFont(FONT_UI, 11, "bold"),
             fg_color=COLORS["panel_alt"], hover_color=COLORS["border"], command=lambda: self.export_protocol("txt"),
         )
         self.btn_txt.pack(side="left", expand=True, fill="x", padx=2)
 
         self.btn_diag = ctk.CTkButton(
-            row, text="📦 ЛОГИ", height=30, font=ctk.CTkFont(FONT_UI, 11, "bold"),
+            row, text="Логи", height=30, font=ctk.CTkFont(FONT_UI, 11, "bold"),
             fg_color="#37474F", hover_color="#455A64", command=self.build_diagnostic_bundle,
         )
         self.btn_diag.pack(side="left", expand=True, fill="x", padx=2)
@@ -1339,7 +1338,7 @@ class OkoMchsApp(ctk.CTk):
         video_row = ctk.CTkFrame(buttons, fg_color="transparent")
         video_row.pack(fill="x", pady=(4, 0))
         self.btn_video_rep = ctk.CTkButton(
-            video_row, text="🎬 ВИДЕОРАПОРТ", height=30,
+            video_row, text="Видеорапорт", height=30,
             font=ctk.CTkFont(FONT_UI, 11, "bold"),
             fg_color="#0D47A1", hover_color="#1565C0",
             command=self.compile_mission_video_report,
@@ -1350,7 +1349,7 @@ class OkoMchsApp(ctk.CTk):
             card,
             text="Space — старт/RTL · T — тепловизор · O — оверлей · E — экспорт\n"
                  "P — снимок · R — запись · G — случайные очаги · Ctrl+O — отчёты",
-            wraplength=560,
+            wraplength=250,
             font=ctk.CTkFont(FONT_UI, 9),
             text_color=COLORS["muted"],
             justify="center",
@@ -1362,7 +1361,7 @@ class OkoMchsApp(ctk.CTk):
         card.grid(row=0, column=2, sticky="nsew", padx=(6, 0))
 
         ctk.CTkLabel(
-            card, text="ЖУРНАЛ ОПЕРАТИВНОГО ДЕЖУРНОГО", font=ctk.CTkFont(FONT_UI, 11, "bold"),
+            card, text="Журнал событий", font=ctk.CTkFont(FONT_UI, 11, "bold"),
             text_color=COLORS["muted"],
         ).pack(anchor="w", padx=14, pady=(10, 4))
 
@@ -2297,8 +2296,10 @@ class OkoMchsApp(ctk.CTk):
         live = self._live()
         link = self.video.status
         link_color = COLORS["ok"] if link in ("MJPEG", "SNAPSHOT") else COLORS["warn"]
-        telemetry = "ЖИВАЯ" if live else "МОДЕЛЬ"
-        self.lbl_link.configure(text=f"● СВЯЗЬ: {link} · ТМ: {telemetry}", text_color=link_color)
+        source = "● Борт подключён" if live else "○ Демонстрация · нет телеметрии"
+        self.lbl_link.configure(text=source, text_color=link_color)
+        self.lbl_flight_summary.configure(text=(
+            f"Высота {self.altitude:.0f} м · Скорость {self.speed:.0f} м/с · Заряд {self.battery:.0f}%"))
         self.lbl_phase.configure(text=self.phase.split(":")[0])
 
         if self.scan_row is not None:
@@ -2549,12 +2550,12 @@ class OkoMchsApp(ctk.CTk):
         left, top, right, bottom = 34, 26, width - 18, height - 30
 
         # Сетка каждые 25 м; подписи от -100 до 100
-        for meter in range(-100, 101, 25):
+        for meter in range(-100, 101, 50):
             px, _ = self._world_to_canvas(float(meter), 0.0)
             canvas.create_line(px, top, px, bottom, fill=COLORS["grid"])
             canvas.create_text(px, bottom + 12, text=f"{meter}", fill=COLORS["muted"],
                                font=(FONT_MONO, 8))
-        for meter in range(-100, 101, 25):
+        for meter in range(-100, 101, 50):
             _, py = self._world_to_canvas(0.0, float(meter))
             canvas.create_line(left, py, right, py, fill=COLORS["grid"])
             canvas.create_text(left - 16, py, text=f"{meter}", fill=COLORS["muted"],
@@ -2565,7 +2566,7 @@ class OkoMchsApp(ctk.CTk):
         canvas.create_text(left + 22, top + 12, text="С", fill=COLORS["muted"], font=(FONT_UI, 8, "bold"))
 
         canvas.create_rectangle(left, top, right, bottom, outline="#26364A", dash=(4, 4))
-        canvas.create_text(left + 6, top - 10, text="АРЕНА 200×200 м · БАЗА В ЦЕНТРЕ",
+        canvas.create_text(left + 6, top - 10, text="200 × 200 м",
                            fill=COLORS["muted"], font=(FONT_UI, 9, "bold"), anchor="w")
 
         # Плановые ряды сканирования (змейка) из config/mission.json
@@ -2583,20 +2584,9 @@ class OkoMchsApp(ctk.CTk):
             canvas.create_line(*points, **options)
             label_x, label_y = self._world_to_canvas(row[0][0], row[0][1])
             anchor = "w" if row[0][0] < row[-1][0] else "e"
-            canvas.create_text(
-                label_x + (4 if anchor == "w" else -4), label_y - 7,
-                text=f"РЯД {index}", fill=color, font=(FONT_UI, 7, "bold"), anchor=anchor,
-            )
-
-        # Маршрут облёта очагов (точки наблюдения из mchs_pilot_route.py)
-        route = [(42.0, 28.0), (-76.0, 30.0), (27.0, -56.0), (50.0, -72.0), (0.0, 0.0)]
-        route_points = []
-        for waypoint_x, waypoint_y in route:
-            route_points.extend(self._world_to_canvas(waypoint_x, waypoint_y))
-        canvas.create_line(*route_points, fill="#1F3A5F", width=1, dash=(4, 6))
-        for waypoint_x, waypoint_y in route[:-1]:
-            wx, wy = self._world_to_canvas(waypoint_x, waypoint_y)
-            canvas.create_oval(wx - 3, wy - 3, wx + 3, wy + 3, outline="#1F3A5F")
+            if active:
+                canvas.create_text(label_x, label_y - 7, text=f"Ряд {index}",
+                                   fill=color, font=(FONT_UI, 8), anchor=anchor)
 
         # База
         base = self._world_to_canvas(0.0, 0.0)
@@ -2670,7 +2660,7 @@ class OkoMchsApp(ctk.CTk):
         canvas.create_line(scale_x0, scale_y, scale_x1, scale_y, fill=COLORS["text"], width=2)
         canvas.create_line(scale_x0, scale_y - 4, scale_x0, scale_y + 4, fill=COLORS["text"])
         canvas.create_line(scale_x1, scale_y - 4, scale_x1, scale_y + 4, fill=COLORS["text"])
-        canvas.create_text((scale_x0 + scale_x1) / 2, scale_y - 10, text="10 м",
+        canvas.create_text((scale_x0 + scale_x1) / 2, scale_y - 10, text=f"{70 * WORLD_WIDTH_M / max(1, right - left):.0f} м",
                            fill=COLORS["muted"], font=(FONT_UI, 8))
 
     def _draw_camera(self) -> None:
