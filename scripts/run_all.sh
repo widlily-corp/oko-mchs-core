@@ -50,9 +50,9 @@ export PYTHONPATH="$REPO_DIR/src:$REPO_DIR/src/mchs_vision:$REPO_DIR/src/mchs_co
 MCHS_RENDERER=${MCHS_RENDERER:-auto}
 case "$MCHS_RENDERER" in
     auto)
+        unset LIBGL_ALWAYS_SOFTWARE GALLIUM_DRIVER MESA_LOADER_DRIVER_OVERRIDE
         if [ -e /dev/dxg ] && command -v glxinfo >/dev/null 2>&1 \
                 && glxinfo -B 2>/dev/null | grep -q 'Accelerated: yes'; then
-            unset LIBGL_ALWAYS_SOFTWARE GALLIUM_DRIVER MESA_LOADER_DRIVER_OVERRIDE
             echo "[INFO] WSLg GPU renderer: $(glxinfo -B 2>/dev/null | sed -n 's/^[[:space:]]*OpenGL renderer string: //p' | head -n 1)"
         else
             export LIBGL_ALWAYS_SOFTWARE=1
