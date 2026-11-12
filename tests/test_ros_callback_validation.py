@@ -63,13 +63,28 @@ def test_failed_victim_photo_does_not_publish_path_or_increment_count(tmp_path):
     assert node._last_photo == "previous.jpg"
     assert node._last_photo_time == 0.0
 
-def test_failed_victim_photo_does_not_publish_path_or_increment_count(tmp_path):
-    node = NS(save_incident_photos=True, _last_photo_time=0.0,
-              _photo_count=7, _last_photo="previous.jpg", _pose=None,
-              incidents_dir=str(tmp_path), logger=None)
-    save = callback("src/mchs_vision/scripts/mchs_vision_node.py",
-                    "_save_incident_photo", save_victim_evidence_snapshot=lambda **kw: "")
-    assert save(node, {"hazard_type": "VICTIM"}, np.zeros((100, 100, 3))) == ""
-    assert node._photo_count == 7
-    assert node._last_photo == "previous.jpg"
-    assert node._last_photo_time == 0.0
+def test_streamer_socket_timeout_is_configured():
+    import socket
+    import threading
+    from mchs_vision.web_stream import LatestFrameStreamer
+
+    streamer = LatestFrameStreamer(host="127.0.0.1", port=0, start_server=True)
+    try:
+        assert streamer._server is not None
+        assert streamer._server.daemon_threads is True
+        client = socket.create_connection(streamer._server.server_address, timeout=2.0)
+        client.settimeout(2.0)
+        client.sendall(b"GET /snapshot.jpg HTTP/1.0\r\n\r\n")
+        chunks = []
+        try:
+            while True:
+                data = client.recv(65536)
+                if not data:
+                    break
+                chunks.append(data)
+        except socket.timeout:
+            pass
+        client.close()
+        assert b"503" in b"".join(chunks)
+    finally:
+        streamer.stop()

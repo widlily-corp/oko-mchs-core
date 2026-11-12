@@ -17,6 +17,7 @@ import json
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from socketserver import ThreadingMixIn
 from typing import Optional
 
 import cv2
@@ -46,6 +47,7 @@ img { display:block; border-radius:8px; max-width:92vw; height:auto; }
 
 
 class _StreamHandler(BaseHTTPRequestHandler):
+    timeout = 10.0
     streamer: "LatestFrameStreamer"
 
     def log_message(self, format: str, *args) -> None:  # noqa: A002
@@ -92,6 +94,8 @@ class _StreamHandler(BaseHTTPRequestHandler):
         self.end_headers()
         while self.streamer.running:
             data = self.streamer.snapshot()
+            if self.rfile is None:
+                break
             if data is not None:
                 try:
                     self.wfile.write(b"--frame\r\n")
@@ -104,6 +108,14 @@ class _StreamHandler(BaseHTTPRequestHandler):
                     break
             time.sleep(0.033)
         self.close_connection = True
+
+
+class _IdleGuardMixIn(ThreadingMixIn):
+    daemon_threads = True
+
+    def process_request(self, request, client_address):
+        request.settimeout(10.0)
+        super().process_request(request, client_address)
 
 
 class LatestFrameStreamer:
@@ -128,7 +140,8 @@ class LatestFrameStreamer:
         if start_server:
             handler = type("BoundStreamHandler", (_StreamHandler,),
                            {"streamer": self})
-            self._server = ThreadingHTTPServer((self.host, self.port), handler)
+            server_cls = type("GuardedHTTPServer", (_IdleGuardMixIn, ThreadingHTTPServer), {})
+            self._server = server_cls((self.host, self.port), handler)
             self._thread = threading.Thread(target=self._server.serve_forever,
                                             daemon=True)
             self._thread.start()
