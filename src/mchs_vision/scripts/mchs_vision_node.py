@@ -461,6 +461,8 @@ class MchsVisionNode(Node):
                     incident_id=f"VICTIM_{incident_id}",
                     timestamp=datetime.now(),
                 )
+                if not path:
+                    return ""
                 name = os.path.basename(path)
             else:
                 name = f"{incident_id}_{stamp}.jpg"

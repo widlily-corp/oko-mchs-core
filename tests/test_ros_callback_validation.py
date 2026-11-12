@@ -51,3 +51,25 @@ def test_invalid_odometry_keeps_last_valid_state(field, value, route):
     callback(path, "_on_odom" if route else "on_odom")(pilot, message)
     assert vars(pilot) == before
 
+
+def test_failed_victim_photo_does_not_publish_path_or_increment_count(tmp_path):
+    node = NS(save_incident_photos=True, _last_photo_time=0.0,
+              _photo_count=7, _last_photo="previous.jpg", _pose=None,
+              incidents_dir=str(tmp_path), logger=None)
+    save = callback("src/mchs_vision/scripts/mchs_vision_node.py",
+                    "_save_incident_photo", save_victim_evidence_snapshot=lambda **kw: "")
+    assert save(node, {"hazard_type": "VICTIM"}, np.zeros((100, 100, 3))) == ""
+    assert node._photo_count == 7
+    assert node._last_photo == "previous.jpg"
+    assert node._last_photo_time == 0.0
+
+def test_failed_victim_photo_does_not_publish_path_or_increment_count(tmp_path):
+    node = NS(save_incident_photos=True, _last_photo_time=0.0,
+              _photo_count=7, _last_photo="previous.jpg", _pose=None,
+              incidents_dir=str(tmp_path), logger=None)
+    save = callback("src/mchs_vision/scripts/mchs_vision_node.py",
+                    "_save_incident_photo", save_victim_evidence_snapshot=lambda **kw: "")
+    assert save(node, {"hazard_type": "VICTIM"}, np.zeros((100, 100, 3))) == ""
+    assert node._photo_count == 7
+    assert node._last_photo == "previous.jpg"
+    assert node._last_photo_time == 0.0
