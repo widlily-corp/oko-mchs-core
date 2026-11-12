@@ -12,6 +12,7 @@ import pytest
 
 from mchs_vision.config import CameraConfig, DetectorConfig, GeoOrigin, HazardClassSpec, threat_level
 from mchs_vision.detector import Detection, HazardDetector
+from mchs_vision import events as events_module
 from mchs_vision.events import EventFactory, IncidentRegistry, save_victim_evidence_snapshot
 from mchs_vision.geometry import GroundProjector, Pose
 from mchs_vision.pipeline import VisionPipeline
@@ -177,3 +178,14 @@ def test_victim_rejects_wide_orange_strip(camera):
     result = pipeline.process(frame, Pose(x_m=0.0, y_m=0.0, z_m=22.0),
                               draw=False)
     assert result.records == []
+
+
+def test_victim_snapshot_write_failure_is_reported(tmp_path, monkeypatch):
+    """????, ??????? ?? ??????? ????????, ?? ???????? ?? ??????????? ?????."""
+    frame = create_synthetic_victim_frame()
+    monkeypatch.setattr(events_module.cv2, "imwrite", lambda *args, **kwargs: False)
+    assert save_victim_evidence_snapshot(
+        frame=frame, centroid_px=(640, 360), bbox=(600, 320, 80, 90),
+        pose=Pose(x_m=1.0, y_m=2.0, z_m=22.0), output_dir=str(tmp_path),
+    ) == ""
+    assert list(tmp_path.iterdir()) == []
