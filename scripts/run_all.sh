@@ -58,17 +58,17 @@ case "$MCHS_RENDERER" in
             export LIBGL_ALWAYS_SOFTWARE=1
             export GALLIUM_DRIVER=llvmpipe
             export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
-            echo "[INFO] ?????????? OpenGL ?? ??????; ???????????? ??????????? llvmpipe."
+            echo "[INFO] Аппаратный OpenGL недоступен; используется программный llvmpipe."
         fi
         ;;
     software)
         export LIBGL_ALWAYS_SOFTWARE=1
         export GALLIUM_DRIVER=llvmpipe
         export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
-        echo "[INFO] ??????????? ???????? ?????? ????? MCHS_RENDERER=software."
+        echo "[INFO] Принудительно включен программный рендеринг (MCHS_RENDERER=software)."
         ;;
     *)
-        echo "[??????] ??????????? MCHS_RENDERER='$MCHS_RENDERER' (auto/software)." >&2
+        echo "[ОШИБКА] Неизвестный MCHS_RENDERER='$MCHS_RENDERER' (auto/software)." >&2
         exit 2
         ;;
 esac
