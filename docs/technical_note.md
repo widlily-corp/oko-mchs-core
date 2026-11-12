@@ -393,7 +393,7 @@ python scripts/diagnose_logs.py --bundle
 ```bash
 PYTHONPATH=src:src/mchs_vision:src/mchs_core:src/mchs_control:src/mchs_ui:scripts \
 python3 -m pytest tests src/mchs_vision/tests src/mchs_core/tests src/mchs_control/test src/mchs_ui/tests -q
-# Последний проверенный результат: 164 passed in 7.77s; время зависит от среды.
+# Последний проверенный результат: 168 passed in 7.77s; время зависит от среды.
 ```
 
 
